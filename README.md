@@ -1,10 +1,11 @@
-# Hemi Instructions (Prebuilt Images)
-If you are not making any changes to the blockscout code, you can use exisitng blockscout docker images to quickly spin up a working explorer. These instructions assume Ubuntu 22.04.
+# Hemi Instructions
+
+For compatibility with PoP-related changes to `op-geth`, Blockscout docker images must be built from source to operate correctly.
 
 If you do not have Docker installed, install it first following a guide like [this one](https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-ubuntu-22-04).
 <br><br>
 Note that the default branch has been configured to connect to a local instance of op-geth after running the instructions to deploy a Hemi L2 network based on instructions from [here](https://github.com/hemilabs/infrastructure) which sets up op-geth's HTTP RPC API (`--http.port`) on port 18546.
-<br><br>
+<br>
 
 First clone this repo:
 
@@ -13,12 +14,15 @@ git clone https://github.com/hemilabs/blockscout
 cd blockscout
 ```
 
-Then run the docker containers:
+Then run the docker containers with the `build` flag to compile the codebase before starting up the docker images:
 ```
-docker compose -f docker-compose/docker-compose-no-build-geth.yml up -d
+cd docker-compose
+docker compose up --build
 ```
 
-You should now be able to open a web browser and view the explorer by navigating to the IP/DNS of the server, for example `http://localhost:80`. It may take several minutes for blockscout to load on first initialization.
+The build process takes 5-10 minutes the first time you run it.
+
+Once the build is complete and the containers start up, you should be able to open a web browser and view the explorer by navigating to the IP/DNS of the server, for example `http://localhost:80`. It may take several minutes for blockscout to load on first initialization.
 
 You should see the following containers running if you run `docker ps`:
 ```
@@ -38,7 +42,7 @@ f8a2d95be7d8   redis:alpine                                        "docker-entry
 
 1. The "Contract" tab for smart contract addresses does not appear, at least for addresses holding smart contracts deployed as part of the genesis configuration.
 
-2. Even after indexing the chain, CPU usage remains high (primarily from `beam.smp`. This may be a configuration issue?
+2. Even after indexing the chain, CPU usage remains high (primarily from `beam.smp`). This may be a configuration issue?
 
 3. The explorer does not detect the chain is a rollup and so does not display L1->L2 deposits or L2->L1 withdrawals in their own list. Rollups likely need additional configuration (and possibly a connection to a regular geth node?).
 
