@@ -3,9 +3,8 @@
 For compatibility with PoP-related changes to `op-geth`, Blockscout docker images must be built from source to operate correctly.
 
 If you do not have Docker installed, install it first following a guide like [this one](https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-ubuntu-22-04).
-<br><br>
-Note that the default branch has been configured to connect to a local instance of op-geth after running the instructions to deploy a Hemi L2 network based on instructions from [here](https://github.com/hemilabs/infrastructure) which sets up op-geth's HTTP RPC API (`--http.port`) on port 18546.
-<br>
+
+Note that the default branch has been configured to connect to a local instance of op-geth after running the instructions to deploy a Hemi L2 network based on [the `infrastructure` repo](https://github.com/hemilabs/infrastructure) which sets up op-geth's HTTP RPC API (`--http.port`) on port 18546.
 
 First clone this repo:
 
@@ -15,9 +14,10 @@ cd blockscout
 ```
 
 Then run the docker containers with the `build` flag to compile the codebase before starting up the docker images:
-```
+
+```sh
 cd docker-compose
-docker compose up --build
+docker-compose up --build
 ```
 
 The build process takes 5-10 minutes the first time you run it.
@@ -25,11 +25,12 @@ The build process takes 5-10 minutes the first time you run it.
 Once the build is complete and the containers start up, you should be able to open a web browser and view the explorer by navigating to the IP/DNS of the server, for example `http://localhost:80`. It may take several minutes for blockscout to load on first initialization.
 
 You should see the following containers running if you run `docker ps`:
-```
+
+```text
 CONTAINER ID   IMAGE                                               COMMAND                  CREATED              STATUS                        PORTS                                                                                              NAMES
 767b30ee43f4   nginx                                               "/docker-entrypoint.…"   About a minute ago   Up About a minute             0.0.0.0:80->80/tcp, :::80->80/tcp, 0.0.0.0:8090-8091->8090-8091/tcp, :::8090-8091->8090-8091/tcp   proxy
 3029051483b6   ghcr.io/blockscout/stats:latest                     "./stats-server"         About a minute ago   Up About a minute                                                                                                                stats
-4fb359138be5   ghcr.io/blockscout/frontend:latest                  "./entrypoint.sh nod…"   About a minute ago   Up About a minute             3000/tcp                                                                                           frontend
+4fb359138be5   hemilabs/frontend:latest                            "./entrypoint.sh nod…"   About a minute ago   Up About a minute             3000/tcp                                                                                           frontend
 762b238f229e   postgres:14                                         "docker-entrypoint.s…"   About a minute ago   Up About a minute (healthy)   0.0.0.0:7433->5432/tcp, :::7433->5432/tcp                                                          stats-postgres
 38650109bbde   blockscout/blockscout:latest                        "sh -c 'bin/blocksco…"   About a minute ago   Up About a minute                                                                                                                backend
 872336afa117   postgres:14                                         "docker-entrypoint.s…"   About a minute ago   Up About a minute (healthy)   0.0.0.0:7432->5432/tcp, :::7432->5432/tcp                                                          db
@@ -45,7 +46,6 @@ f8a2d95be7d8   redis:alpine                                        "docker-entry
 2. Even after indexing the chain, CPU usage remains high (primarily from `beam.smp`). This may be a configuration issue?
 
 3. The explorer does not detect the chain is a rollup and so does not display L1->L2 deposits or L2->L1 withdrawals in their own list. Rollups likely need additional configuration (and possibly a connection to a regular geth node?).
-
 
 <h1 align="center">Blockscout</h1>
 <p align="center">Blockchain Explorer for inspecting and analyzing EVM Chains.</p>
