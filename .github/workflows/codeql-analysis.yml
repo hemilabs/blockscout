@@ -11,14 +11,21 @@
 #
 name: "CodeQL"
 
-on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    # The branches below must be a subset of the branches above
-    branches: [ "master" ]
-  schedule:
-    - cron: '45 11 * * 5'
+# This workflow requires Advanced Security enabled in the repo, which in turn is
+# required to use code scanning. Therefore, automatically triggering it on
+# push/pull requests/schedule is disabled. Manual triggering is left as an
+# option as "on:" is a required workflow property and otherwise the whole
+# workflow should be removed. That's not ideal as in the near future it would be
+# re-enabled and having the file visible would help.
+on: 
+  workflow_dispatch
+#   push:
+#     branches: [ "master" ]
+#   pull_request:
+#     # The branches below must be a subset of the branches above
+#     branches: [ "master" ]
+#   schedule:
+#     - cron: '45 11 * * 5'
 
 jobs:
   analyze:
