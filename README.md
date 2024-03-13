@@ -22,13 +22,13 @@ docker-compose up --build
 
 The build process takes 5-10 minutes the first time you run it.
 
-Once the build is complete and the containers start up, you should be able to open a web browser and view the explorer by navigating to the IP/DNS of the server, for example `http://localhost:80`. It may take several minutes for blockscout to load on first initialization.
+Once the build is complete and the containers start up, you should be able to open a web browser and view the explorer by navigating to the IP/DNS of the server, for example `http://localhost:90`. It may take several minutes for blockscout to load on first initialization.
 
 You should see the following containers running if you run `docker ps`:
 
 ```text
 CONTAINER ID   IMAGE                                               COMMAND                  CREATED              STATUS                        PORTS                                                                                              NAMES
-767b30ee43f4   nginx                                               "/docker-entrypoint.…"   About a minute ago   Up About a minute             0.0.0.0:80->80/tcp, :::80->80/tcp, 0.0.0.0:8090-8091->8090-8091/tcp, :::8090-8091->8090-8091/tcp   proxy
+767b30ee43f4   nginx                                               "/docker-entrypoint.…"   About a minute ago   Up About a minute             0.0.0.0:90->90/tcp, :::90->90/tcp, 0.0.0.0:8090-8091->8090-8091/tcp, :::8090-8091->8090-8091/tcp   proxy
 3029051483b6   ghcr.io/blockscout/stats:latest                     "./stats-server"         About a minute ago   Up About a minute                                                                                                                stats
 4fb359138be5   hemilabs/frontend:main                              "./entrypoint.sh nod…"   About a minute ago   Up About a minute             3000/tcp                                                                                           frontend
 762b238f229e   postgres:14                                         "docker-entrypoint.s…"   About a minute ago   Up About a minute (healthy)   0.0.0.0:7433->5432/tcp, :::7433->5432/tcp                                                          stats-postgres
