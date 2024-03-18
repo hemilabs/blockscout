@@ -1,0 +1,33 @@
+name: Blockscout Explorer Deployment
+
+on: 
+    workflow_dispatch:
+    push:
+        branches:
+            - production-optimism-stg
+
+jobs:
+    blockscout_build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v3
+
+            - name: Deploy via docker-compose and ssh
+              uses: appleboy/ssh-action@master
+              with:
+                  host: ${{ secrets.SSH_HOST }}
+                  username: ${{ secrets.SSH_USER }}
+                  key: ${{ secrets.SSH_KEY }}
+                  port: ${{ secrets.SSH_PORT }}
+                  script: |
+                    if [ -d ~/blockscout ]; then
+                        TIMESTAMP=$(date +%Y%m%d%H%M%S)
+                        tar -czvf ~/blockscout_$TIMESTAMP.tar.gz ~/blockscout
+                    fi
+                    cd ~/blockscout
+                    git pull
+                    cd ~/blockscout/docker-compose
+                    docker compose up -d
+
+
