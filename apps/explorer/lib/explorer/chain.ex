@@ -33,6 +33,7 @@ defmodule Explorer.Chain do
   alias ABI.TypeDecoder
   alias Ecto.{Changeset, Multi}
 
+  alias EthereumJSONRPC.OpNode
   alias EthereumJSONRPC.Transaction, as: EthereumJSONRPCTransaction
 
   alias Explorer.Account.WatchlistAddress
@@ -1703,7 +1704,7 @@ defmodule Explorer.Chain do
         {:error, :not_found}
 
       transaction ->
-        {:ok, transaction}
+        {:ok, transaction |> Map.put(:btc_finality, OpNode.get_block_btc_finality(transaction.block_hash))}
     end
   end
 
@@ -2965,7 +2966,7 @@ defmodule Explorer.Chain do
     |> select_repo(options).one()
     |> case do
       nil -> {:error, :not_found}
-      block -> {:ok, block}
+      block -> {:ok, block |> Map.put(:btc_finality, OpNode.get_block_btc_finality(block.hash))}
     end
   end
 

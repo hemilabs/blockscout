@@ -1,5 +1,11 @@
 # ChangeLog
 
+## Hemi current
+
+### Features
+
+- [#1](https://github.com/hemilabs/blockscout/pull/1) - Adapt to Hemi and expose bitcoin finality
+
 ## Current
 
 ### Features

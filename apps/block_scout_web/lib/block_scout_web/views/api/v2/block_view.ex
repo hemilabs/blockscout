@@ -61,6 +61,14 @@ defmodule BlockScoutWeb.API.V2.BlockView do
       "tx_fees" => tx_fees,
       "withdrawals_count" => count_withdrawals(block)
     }
+    |> add_optional_block_field(block, :btc_finality)
+  end
+
+  defp add_optional_block_field(result, block, field) do
+    case Map.get(block, field) do
+      nil -> result
+      value -> Map.put(result, Atom.to_string(field), value)
+    end
   end
 
   def prepare_rewards(rewards, block, single_block?) do
