@@ -426,6 +426,7 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
     |> add_optional_transaction_field(transaction, :l1_fee_scalar)
     |> add_optional_transaction_field(transaction, :l1_gas_price)
     |> add_optional_transaction_field(transaction, :l1_gas_used)
+    |> add_optional_transaction_field(transaction, :btc_finality)
     |> add_optimism_fields(transaction.hash, single_tx?)
     |> chain_type_fields(transaction, single_tx?, conn, watchlist_names)
     |> maybe_put_stability_fee(transaction)
