@@ -33,7 +33,6 @@ defmodule Indexer.Block.Fetcher do
 
   alias Indexer.Transform.{
     AddressCoinBalances,
-    AddressCoinBalancesDaily,
     Addresses,
     AddressTokenBalances,
     MintTransfers,
@@ -176,12 +175,6 @@ defmodule Indexer.Block.Fetcher do
              withdrawals: withdrawals_params
            }
            |> AddressCoinBalances.params_set(),
-         coin_balances_params_daily_set =
-           %{
-             coin_balances_params: coin_balances_params_set,
-             blocks: blocks
-           }
-           |> AddressCoinBalancesDaily.params_set(),
          beneficiaries_with_gas_payment =
            beneficiaries_with_gas_payment(blocks, beneficiary_params_set, transactions_with_receipts),
          address_token_balances = AddressTokenBalances.params_set(%{token_transfers_params: token_transfers}),
@@ -191,7 +184,6 @@ defmodule Indexer.Block.Fetcher do
          basic_import_options = %{
            addresses: %{params: addresses},
            address_coin_balances: %{params: coin_balances_params_set},
-           address_coin_balances_daily: %{params: coin_balances_params_daily_set},
            address_token_balances: %{params: address_token_balances},
            address_current_token_balances: %{
              params: address_token_balances |> MapSet.to_list() |> TokenBalances.to_address_current_token_balances()
@@ -419,15 +411,15 @@ defmodule Indexer.Block.Fetcher do
 
   def fetch_beneficiaries_manual(block, transactions) do
     block
-    |> Chain.block_reward_by_parts(transactions)
+    |> Block.block_reward_by_parts(transactions)
     |> reward_parts_to_beneficiaries()
   end
 
   defp reward_parts_to_beneficiaries(reward_parts) do
     reward =
       reward_parts.static_reward
-      |> Wei.sum(reward_parts.txn_fees)
-      |> Wei.sub(reward_parts.burned_fees)
+      |> Wei.sum(reward_parts.transaction_fees)
+      |> Wei.sub(reward_parts.burnt_fees)
       |> Wei.sum(reward_parts.uncle_reward)
 
     MapSet.new([

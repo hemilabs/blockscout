@@ -23,7 +23,7 @@ defmodule BlockScoutWeb.Mixfile do
         dialyzer: :test
       ],
       start_permanent: Mix.env() == :prod,
-      version: "5.3.1",
+      version: "5.3.3",
       xref: [
         exclude: [
           Explorer.Chain.Cache.OptimismFinalizationPeriod,
@@ -90,7 +90,7 @@ defmodule BlockScoutWeb.Mixfile do
       # HTML CSS selectors for Phoenix controller tests
       {:floki, "~> 0.31"},
       {:flow, "~> 1.2"},
-      {:gettext, "~> 0.23.1"},
+      {:gettext, "~> 0.24.0"},
       {:hammer, "~> 6.0"},
       {:httpoison, "~> 2.0"},
       {:indexer, in_umbrella: true, runtime: false},
@@ -138,7 +138,8 @@ defmodule BlockScoutWeb.Mixfile do
       {:ex_json_schema, "~> 0.10.1"},
       {:ueberauth, "~> 0.7"},
       {:ueberauth_auth0, "~> 2.0"},
-      {:bureaucrat, "~> 0.2.9", only: :test}
+      {:bureaucrat, "~> 0.2.9", only: :test},
+      {:logger_json, "~> 5.1"}
     ]
   end
 

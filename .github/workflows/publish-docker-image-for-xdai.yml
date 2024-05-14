@@ -3,18 +3,19 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-name: Publish Docker image for specific chain branches
+name: Gnosis chain Publish Docker image
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - production-xdai-stg
+      - production-xdai
 jobs:
   push_to_registry:
     name: Push Docker image to Docker Hub
     runs-on: ubuntu-latest
     env:
-      RELEASE_VERSION: 5.3.1
+      RELEASE_VERSION: 5.3.3
       DOCKER_CHAIN_NAME: xdai
     steps:
       - name: Check out the repo

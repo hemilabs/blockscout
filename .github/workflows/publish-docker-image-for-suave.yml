@@ -3,12 +3,13 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-name: Publish Docker image for specific chain branches
+name: SUAVE Publish Docker image
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - production-suave-stg
+      - production-suave
 env:
   OTP_VERSION: '25.2.1'
   ELIXIR_VERSION: '1.14.5'
@@ -17,7 +18,7 @@ jobs:
     name: Push Docker image to Docker Hub
     runs-on: ubuntu-latest
     env:
-      RELEASE_VERSION: 5.3.1
+      RELEASE_VERSION: 5.3.3
       DOCKER_CHAIN_NAME: suave
     steps:
       - name: Check out the repo

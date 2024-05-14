@@ -17,6 +17,7 @@ defmodule BlockScoutWeb.Chain do
 
   import Explorer.Helper, only: [parse_integer: 1]
 
+  alias Ecto.Association.NotLoaded
   alias Explorer.Account.{TagAddress, TagTransaction, WatchlistAddress}
   alias Explorer.Chain.Block.Reward
 
@@ -103,16 +104,13 @@ defmodule BlockScoutWeb.Chain do
     end
   end
 
-  @spec next_page_params(any, any, any, any) :: nil | map
-  def next_page_params(next_page, list, params, is_ctb_with_fiat_value \\ false)
+  @spec next_page_params(any, list(), map(), (any -> map())) :: nil | map
+  def next_page_params(next_page, list, params, paging_function \\ &paging_params/1)
 
   def next_page_params([], _list, _params, _), do: nil
 
-  def next_page_params(_, list, params, is_ctb_with_fiat_value) do
-    paging_params =
-      if is_ctb_with_fiat_value,
-        do: paging_params_with_fiat_value(List.last(list)),
-        else: paging_params(List.last(list))
+  def next_page_params(_, list, params, paging_function) do
+    paging_params = paging_function.(List.last(list))
 
     next_page_params = Map.merge(params, paging_params)
     current_items_count_string = Map.get(next_page_params, "items_count")
@@ -142,6 +140,34 @@ defmodule BlockScoutWeb.Chain do
     else
       _ ->
         [paging_options: @default_paging_options]
+    end
+  end
+
+  def paging_options(%{
+        "fee" => fee_string,
+        "value" => value_string,
+        "block_number" => block_number_string,
+        "index" => index_string,
+        "inserted_at" => inserted_at_string,
+        "hash" => hash_string
+      }) do
+    with {:ok, hash} <- string_to_transaction_hash(hash_string),
+         {:ok, inserted_at, _} <- DateTime.from_iso8601(inserted_at_string) do
+      [
+        paging_options: %{
+          @default_paging_options
+          | key: %{
+              fee: decimal_parse(fee_string),
+              value: decimal_parse(value_string),
+              block_number: parse_integer(block_number_string),
+              index: parse_integer(index_string),
+              inserted_at: inserted_at,
+              hash: hash
+            }
+        }
+      ]
+    else
+      _ -> [paging_options: @default_paging_options]
     end
   end
 
@@ -371,8 +397,17 @@ defmodule BlockScoutWeb.Chain do
     end
   end
 
-  def paging_options(%{"smart_contract_id" => id}) do
-    [paging_options: %{@default_paging_options | key: {id}}]
+  def paging_options(%{"smart_contract_id" => id_str} = params) do
+    transactions_count = parse_integer(params["tx_count"])
+    coin_balance = parse_integer(params["coin_balance"])
+    id = parse_integer(id_str)
+
+    [
+      paging_options: %{
+        @default_paging_options
+        | key: %{id: id, transactions_count: transactions_count, fetched_coin_balance: coin_balance}
+      }
+    ]
   end
 
   def paging_options(%{"items_count" => items_count_string, "state_changes" => _}) when is_binary(items_count_string) do
@@ -406,6 +441,18 @@ defmodule BlockScoutWeb.Chain do
   # clause for Polygon Edge Deposits and Withdrawals and for account's entities pagination
   def paging_options(%{"id" => id}) when is_integer(id) do
     [paging_options: %{@default_paging_options | key: {id}}]
+  end
+
+  def paging_options(%{
+        "token_contract_address_hash" => token_contract_address_hash,
+        "token_id" => token_id,
+        "token_type" => token_type
+      }) do
+    [paging_options: %{@default_paging_options | key: {token_contract_address_hash, token_id, token_type}}]
+  end
+
+  def paging_options(%{"token_contract_address_hash" => token_contract_address_hash, "token_type" => token_type}) do
+    [paging_options: %{@default_paging_options | key: {token_contract_address_hash, token_type}}]
   end
 
   def paging_options(_params), do: [paging_options: @default_paging_options]
@@ -570,7 +617,7 @@ defmodule BlockScoutWeb.Chain do
     %{"block_number" => block_number}
   end
 
-  defp paging_params(%SmartContract{} = smart_contract) do
+  defp paging_params(%SmartContract{address: %NotLoaded{}} = smart_contract) do
     %{"smart_contract_id" => smart_contract.id}
   end
 
@@ -580,6 +627,15 @@ defmodule BlockScoutWeb.Chain do
 
   defp paging_params(%OptimismOutputRoot{l2_output_index: index}) do
     %{"index" => index}
+  end
+
+  defp paging_params(%SmartContract{} = smart_contract) do
+    %{
+      "smart_contract_id" => smart_contract.id,
+      "tx_count" => smart_contract.address.transactions_count,
+      "coin_balance" =>
+        smart_contract.address.fetched_coin_balance && Wei.to(smart_contract.address.fetched_coin_balance, :wei)
+    }
   end
 
   defp paging_params(%Withdrawal{index: index}) do
@@ -635,7 +691,10 @@ defmodule BlockScoutWeb.Chain do
     %{"id" => msg_id}
   end
 
-  defp paging_params_with_fiat_value(%CurrentTokenBalance{id: id, value: value} = ctb) do
+  @spec paging_params_with_fiat_value(CurrentTokenBalance.t()) :: %{
+          required(String.t()) => Decimal.t() | non_neg_integer() | nil
+        }
+  def paging_params_with_fiat_value(%CurrentTokenBalance{id: id, value: value} = ctb) do
     %{"fiat_value" => ctb.fiat_value, "value" => value, "id" => id}
   end
 

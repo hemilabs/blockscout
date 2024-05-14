@@ -11,6 +11,7 @@ import Config
 
 # General application configuration
 config :explorer,
+  chain_type: ConfigHelper.chain_type(),
   ecto_repos: ConfigHelper.repos(),
   token_functions_reader_max_retries: 3,
   # for not fully indexed blockchains
@@ -100,7 +101,7 @@ config :explorer, Explorer.Counters.AddressTokenTransfersCounter,
   enabled: true,
   enable_consolidation: true
 
-config :explorer, Explorer.Counters.BlockBurnedFeeCounter,
+config :explorer, Explorer.Counters.BlockBurntFeeCounter,
   enabled: true,
   enable_consolidation: true
 
