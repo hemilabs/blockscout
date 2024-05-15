@@ -21,6 +21,7 @@ defmodule Explorer.Factory do
   }
 
   alias Explorer.Admin.Administrator
+  alias Explorer.Chain.Beacon.{Blob, BlobTransaction}
   alias Explorer.Chain.Block.{EmissionReward, Range, Reward}
 
   alias Explorer.Chain.{
@@ -38,6 +39,7 @@ defmodule Explorer.Factory do
     Log,
     PendingBlockOperation,
     SmartContract,
+    SmartContractAdditionalSource,
     Token,
     TokenTransfer,
     Token.Instance,
@@ -533,7 +535,7 @@ defmodule Explorer.Factory do
         %Transaction{index: nil} = transaction,
         # The `transaction.block` must be consensus.  Non-consensus blocks can only be associated with the
         # `transaction_forks`.
-        %Block{consensus: true, hash: block_hash, number: block_number},
+        %Block{consensus: true, hash: block_hash, number: block_number, timestamp: timestamp},
         collated_params
       )
       when is_list(collated_params) do
@@ -542,6 +544,8 @@ defmodule Explorer.Factory do
     cumulative_gas_used = collated_params[:cumulative_gas_used] || Enum.random(21_000..100_000)
     gas_used = collated_params[:gas_used] || Enum.random(21_000..100_000)
     status = Keyword.get(collated_params, :status, Enum.random([:ok, :error]))
+    block_timestamp = Keyword.get(collated_params, :block_timestamp, timestamp)
+    block_consensus = Keyword.get(collated_params, :block_consensus, true)
 
     error = (status == :error && collated_params[:error]) || nil
 
@@ -555,7 +559,9 @@ defmodule Explorer.Factory do
       error: error,
       gas_used: gas_used,
       index: next_transaction_index,
-      status: status
+      status: status,
+      block_timestamp: block_timestamp,
+      block_consensus: block_consensus
     })
     |> Repo.update!()
     |> Repo.preload(:block)
@@ -675,8 +681,7 @@ defmodule Explorer.Factory do
       index: sequence("log_index", & &1),
       second_topic: nil,
       third_topic: nil,
-      transaction: build(:transaction),
-      type: sequence("0x")
+      transaction: build(:transaction)
     }
   end
 
@@ -807,7 +812,8 @@ defmodule Explorer.Factory do
       s: sequence(:transaction_s, & &1),
       to_address: build(:address),
       v: Enum.random(27..30),
-      value: Enum.random(1..100_000)
+      value: Enum.random(1..100_000),
+      block_timestamp: DateTime.utc_now()
     }
   end
 
@@ -868,6 +874,10 @@ defmodule Explorer.Factory do
       is_vyper_contract: Enum.random([true, false]),
       verified_via_eth_bytecode_db: Enum.random([true, false])
     }
+  end
+
+  def smart_contract_additional_source_factory do
+    %SmartContractAdditionalSource{}
   end
 
   def unique_smart_contract_factory do
@@ -1080,6 +1090,27 @@ defmodule Explorer.Factory do
 
   def withdrawal_validator_index do
     sequence("withdrawal_validator_index", & &1)
+  end
+
+  def blob_factory do
+    kzg_commitment = data(:kzg_commitment)
+
+    %Blob{
+      hash: Blob.hash(kzg_commitment.bytes),
+      blob_data: data(:blob_data),
+      kzg_commitment: kzg_commitment,
+      kzg_proof: data(:kzg_proof)
+    }
+  end
+
+  def blob_transaction_factory do
+    %BlobTransaction{
+      hash: insert(:transaction) |> with_block() |> Map.get(:hash),
+      max_fee_per_blob_gas: Decimal.new(1_000_000_000),
+      blob_gas_price: Decimal.new(1_000_000_000),
+      blob_gas_used: Decimal.new(131_072),
+      blob_versioned_hashes: []
+    }
   end
 
   def random_bool, do: Enum.random([true, false])

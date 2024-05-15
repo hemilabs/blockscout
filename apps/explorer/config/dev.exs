@@ -19,7 +19,13 @@ config :explorer, Explorer.Repo.PolygonZkevm, timeout: :timer.seconds(80)
 
 config :explorer, Explorer.Repo.RSK, timeout: :timer.seconds(80)
 
+config :explorer, Explorer.Repo.Shibarium, timeout: :timer.seconds(80)
+
 config :explorer, Explorer.Repo.Suave, timeout: :timer.seconds(80)
+
+config :explorer, Explorer.Repo.Beacon, timeout: :timer.seconds(80)
+
+config :explorer, Explorer.Repo.BridgedTokens, timeout: :timer.seconds(80)
 
 config :explorer, Explorer.Tracer, env: "dev", disabled?: true
 

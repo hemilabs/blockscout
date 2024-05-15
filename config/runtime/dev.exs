@@ -101,11 +101,36 @@ config :explorer, Explorer.Repo.RSK,
   # separating repos for different CHAIN_TYPE is implemented only for the sake of keeping DB schema update relevant to the current chain type
   pool_size: 1
 
+# Configure Beacon Chain database
+config :explorer, Explorer.Repo.Beacon,
+  database: database,
+  hostname: hostname,
+  url: System.get_env("DATABASE_URL"),
+  # actually this repo is not started, and its pool size remains unused.
+  # separating repos for different CHAIN_TYPE is implemented only for the sake of keeping DB schema update relevant to the current chain type
+  pool_size: 1
+
 # Configure Suave database
 config :explorer, Explorer.Repo.Suave,
   database: database,
   hostname: hostname,
   url: ExplorerConfigHelper.get_suave_db_url(),
+  pool_size: 1
+
+# Configure Shibarium database
+config :explorer, Explorer.Repo.Shibarium,
+  database: database,
+  hostname: hostname,
+  url: System.get_env("DATABASE_URL"),
+  pool_size: 1
+
+# Configures BridgedTokens database
+config :explorer, Explorer.Repo.BridgedTokens,
+  database: database,
+  hostname: hostname,
+  url: System.get_env("DATABASE_URL"),
+  # actually this repo is not started, and its pool size remains unused.
+  # separating repos for different CHAIN_TYPE is implemented only for the sake of keeping DB schema update relevant to the current chain type
   pool_size: 1
 
 variant = Variant.get()
