@@ -357,7 +357,7 @@ msgstr ""
 #: lib/block_scout_web/templates/address_withdrawal/index.html.eex:41
 #: lib/block_scout_web/templates/block_withdrawal/index.html.eex:32
 #: lib/block_scout_web/templates/withdrawal/index.html.eex:38
-#, elixir-autogen, elixir-format
+#, elixir-autogen, elixir-format, fuzzy
 msgid "Amount"
 msgstr ""
 
@@ -1561,7 +1561,7 @@ msgstr ""
 #: lib/block_scout_web/templates/address_withdrawal/index.html.eex:29
 #: lib/block_scout_web/templates/block_withdrawal/index.html.eex:23
 #: lib/block_scout_web/templates/withdrawal/index.html.eex:23
-#, elixir-autogen, elixir-format
+#, elixir-autogen, elixir-format, fuzzy
 msgid "Index"
 msgstr ""
 
@@ -1898,12 +1898,12 @@ msgid "New Smart Contract Verification"
 msgstr ""
 
 #: lib/block_scout_web/templates/address_contract_verification_via_standard_json_input/new.html.eex:9
-#, elixir-autogen, elixir-format
+#, elixir-autogen, elixir-format, fuzzy
 msgid "New Smart Contract Verification via Standard input JSON"
 msgstr ""
 
 #: lib/block_scout_web/templates/address_contract_verification_via_json/new.html.eex:5
-#, elixir-autogen, elixir-format
+#, elixir-autogen, elixir-format, fuzzy
 msgid "New Smart Contract Verification via metadata JSON"
 msgstr ""
 
@@ -3690,40 +3690,6 @@ msgstr ""
 #: lib/block_scout_web/templates/transaction/overview.html.eex:399
 #, elixir-autogen, elixir-format
 msgid "Price per unit of gas specified by the sender on L2. Higher gas prices can prioritize transaction inclusion during times of high usage."
-msgstr ""
-
-#: lib/block_scout_web/templates/address_withdrawal/index.html.eex:41
-#: lib/block_scout_web/templates/block_withdrawal/index.html.eex:32
-#: lib/block_scout_web/templates/withdrawal/index.html.eex:38
-#, elixir-autogen, elixir-format, fuzzy
-msgid "Amount"
-msgstr ""
-
-#: lib/block_scout_web/templates/withdrawal/_metatags.html.eex:2
-#, elixir-autogen, elixir-format
-msgid "Beacon chain withdrawals - %{subnetwork} Explorer"
-msgstr ""
-
-#: lib/block_scout_web/templates/withdrawal/_metatags.html.eex:7
-#, elixir-autogen, elixir-format
-msgid "Beacon chain, Withdrawals, %{subnetwork}, %{coin}"
-msgstr ""
-
-#: lib/block_scout_web/templates/address_withdrawal/index.html.eex:29
-#: lib/block_scout_web/templates/block_withdrawal/index.html.eex:23
-#: lib/block_scout_web/templates/withdrawal/index.html.eex:23
-#, elixir-autogen, elixir-format, fuzzy
-msgid "Index"
-msgstr ""
-
-#: lib/block_scout_web/templates/address_contract_verification_via_standard_json_input/new.html.eex:9
-#, elixir-autogen, elixir-format, fuzzy
-msgid "New Smart Contract Verification via Standard input JSON"
-msgstr ""
-
-#: lib/block_scout_web/templates/address_contract_verification_via_json/new.html.eex:5
-#, elixir-autogen, elixir-format, fuzzy
-msgid "New Smart Contract Verification via metadata JSON"
 msgstr ""
 
 #: lib/block_scout_web/templates/layout/_footer.html.eex:31
