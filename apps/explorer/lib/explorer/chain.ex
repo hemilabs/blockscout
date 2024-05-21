@@ -49,6 +49,7 @@ defmodule Explorer.Chain do
     Address.CurrentTokenBalance,
     Address.TokenBalance,
     Block,
+    BlockNumberHelper,
     CurrencyHelper,
     Data,
     DecompiledSmartContract,
@@ -359,7 +360,7 @@ defmodule Explorer.Chain do
     to_block = to_block(options)
 
     base =
-      if DenormalizationHelper.denormalization_finished?() do
+      if DenormalizationHelper.transactions_denormalization_finished?() do
         from(log in Log,
           order_by: [desc: log.block_number, desc: log.index],
           where: log.address_hash == ^address_hash,
@@ -489,7 +490,7 @@ defmodule Explorer.Chain do
   @spec gas_payment_by_block_hash([Hash.Full.t()]) :: %{Hash.Full.t() => Wei.t()}
   def gas_payment_by_block_hash(block_hashes) when is_list(block_hashes) do
     query =
-      if DenormalizationHelper.denormalization_finished?() do
+      if DenormalizationHelper.transactions_denormalization_finished?() do
         from(
           transaction in Transaction,
           where: transaction.block_hash in ^block_hashes and transaction.block_consensus == true,
@@ -835,72 +836,6 @@ defmodule Explorer.Chain do
   end
 
   @doc """
-  The fee a `transaction` paid for the `t:Explorer.Transaction.t/0` `gas`
-
-  If the transaction is pending, then the fee will be a range of `unit`
-
-      iex> Explorer.Chain.fee(
-      ...>   %Explorer.Chain.Transaction{
-      ...>     gas: Decimal.new(3),
-      ...>     gas_price: %Explorer.Chain.Wei{value: Decimal.new(2)},
-      ...>     gas_used: nil
-      ...>   },
-      ...>   :wei
-      ...> )
-      {:maximum, Decimal.new(6)}
-
-  If the transaction has been confirmed in block, then the fee will be the actual fee paid in `unit` for the `gas_used`
-  in the `transaction`.
-
-      iex> Explorer.Chain.fee(
-      ...>   %Explorer.Chain.Transaction{
-      ...>     gas: Decimal.new(3),
-      ...>     gas_price: %Explorer.Chain.Wei{value: Decimal.new(2)},
-      ...>     gas_used: Decimal.new(2)
-      ...>   },
-      ...>   :wei
-      ...> )
-      {:actual, Decimal.new(4)}
-
-  """
-  @spec fee(Transaction.t(), :ether | :gwei | :wei) :: {:maximum, Decimal.t()} | {:actual, Decimal.t() | nil}
-  def fee(%Transaction{gas: _gas, gas_price: nil, gas_used: nil}, _unit), do: {:maximum, nil}
-
-  def fee(%Transaction{gas: gas, gas_price: gas_price, gas_used: nil} = tx, unit) do
-    {:maximum, fee(tx, gas_price, gas, unit)}
-  end
-
-  def fee(%Transaction{gas: gas, gas_price: gas_price, gas_used: nil}, unit) do
-    fee =
-      gas_price
-      |> Wei.to(unit)
-      |> Decimal.mult(gas)
-
-    {:maximum, fee}
-  end
-
-  def fee(%Transaction{gas_price: nil, gas_used: _gas_used}, _unit), do: {:actual, nil}
-
-  def fee(%Transaction{gas_price: gas_price, gas_used: gas_used} = tx, unit) do
-    {:actual, fee(tx, gas_price, gas_used, unit)}
-  end
-
-  defp fee(tx, gas_price, gas, unit) do
-    l1_fee =
-      case Map.get(tx, :l1_fee) do
-        nil -> Wei.from(Decimal.new(0), :wei)
-        value -> value
-      end
-
-    gas_price
-    |> Wei.to(unit)
-    |> Decimal.mult(gas)
-    |> Wei.from(unit)
-    |> Wei.sum(l1_fee)
-    |> Wei.to(unit)
-  end
-
-  @doc """
   Checks to see if the chain is down indexing based on the transaction from the
   oldest block and the pending operation
   """
@@ -1163,11 +1098,13 @@ defmodule Explorer.Chain do
   @doc """
   Converts list of `t:Explorer.Chain.Address.t/0` `hash` to the `t:Explorer.Chain.Address.t/0` with that `hash`.
 
-  Returns `[%Explorer.Chain.Address{}]}` if found
+  Returns `[%Explorer.Chain.Address{}]` if found
 
   """
-  @spec hashes_to_addresses([Hash.Address.t()]) :: [Address.t()]
-  def hashes_to_addresses(hashes) when is_list(hashes) do
+  @spec hashes_to_addresses([Hash.Address.t()], [necessity_by_association_option | api?]) :: [Address.t()]
+  def hashes_to_addresses(hashes, options \\ []) when is_list(hashes) do
+    necessity_by_association = Keyword.get(options, :necessity_by_association, %{})
+
     query =
       from(
         address in Address,
@@ -1176,7 +1113,9 @@ defmodule Explorer.Chain do
         order_by: fragment("array_position(?, ?)", type(^hashes, {:array, Hash.Address}), address.hash)
       )
 
-    Repo.all(query)
+    query
+    |> join_associations(necessity_by_association)
+    |> select_repo(options).all()
   end
 
   @doc """
@@ -1481,7 +1420,7 @@ defmodule Explorer.Chain do
   If there are no blocks, the percentage is 0.
 
       iex> Explorer.Chain.indexed_ratio_blocks()
-      Decimal.new(0)
+      Decimal.new(1)
 
   """
   @spec indexed_ratio_blocks() :: Decimal.t()
@@ -1493,10 +1432,10 @@ defmodule Explorer.Chain do
 
       case {min_saved_block_number, max_saved_block_number} do
         {0, 0} ->
-          Decimal.new(0)
+          Decimal.new(1)
 
         _ ->
-          divisor = max_saved_block_number - min_blockchain_block_number + 1
+          divisor = max_saved_block_number - min_blockchain_block_number - BlockNumberHelper.null_rounds_count() + 1
 
           ratio = get_ratio(BlockCache.estimated_count(), divisor)
 
@@ -1528,7 +1467,9 @@ defmodule Explorer.Chain do
           Decimal.new(0)
 
         _ ->
-          full_blocks_range = max_saved_block_number - min_blockchain_trace_block_number + 1
+          full_blocks_range =
+            max_saved_block_number - min_blockchain_trace_block_number - BlockNumberHelper.null_rounds_count() + 1
+
           processed_int_txs_for_blocks_count = max(0, full_blocks_range - pbo_count)
 
           ratio = get_ratio(processed_int_txs_for_blocks_count, full_blocks_range)
@@ -1725,84 +1666,6 @@ defmodule Explorer.Chain do
     |> Enum.into(%{})
   end
 
-  @doc """
-  Lists the top `t:Explorer.Chain.Address.t/0`'s' in descending order based on coin balance and address hash.
-
-  """
-  @spec list_top_addresses :: [{Address.t(), non_neg_integer()}]
-  def list_top_addresses(options \\ []) do
-    paging_options = Keyword.get(options, :paging_options, @default_paging_options)
-
-    if is_nil(paging_options.key) do
-      paging_options.page_size
-      |> Accounts.take_enough()
-      |> case do
-        nil ->
-          get_addresses(options)
-
-        accounts ->
-          Enum.map(
-            accounts,
-            &{&1,
-             if is_nil(&1.nonce) do
-               0
-             else
-               &1.nonce + 1
-             end}
-          )
-      end
-    else
-      fetch_top_addresses(options)
-    end
-  end
-
-  defp get_addresses(options) do
-    accounts_with_n = fetch_top_addresses(options)
-
-    accounts_with_n
-    |> Enum.map(fn {address, _n} -> address end)
-    |> Accounts.update()
-
-    accounts_with_n
-  end
-
-  defp fetch_top_addresses(options) do
-    paging_options = Keyword.get(options, :paging_options, @default_paging_options)
-
-    base_query =
-      from(a in Address,
-        where: a.fetched_coin_balance > ^0,
-        order_by: [desc: a.fetched_coin_balance, asc: a.hash],
-        preload: [:names, :smart_contract],
-        select: {a, fragment("coalesce(1 + ?, 0)", a.nonce)}
-      )
-
-    base_query
-    |> page_addresses(paging_options)
-    |> limit(^paging_options.page_size)
-    |> select_repo(options).all()
-  end
-
-  @doc """
-  Lists `t:Explorer.Chain.OptimismTxnBatch.t/0`'s' in descending order based on l2_block_number.
-
-  """
-  @spec list_txn_batches :: [OptimismTxnBatch.t()]
-  def list_txn_batches(options \\ []) do
-    paging_options = Keyword.get(options, :paging_options, @default_paging_options)
-
-    base_query =
-      from(tb in OptimismTxnBatch,
-        order_by: [desc: tb.l2_block_number]
-      )
-
-    base_query
-    |> join_association(:frame_sequence, :required)
-    |> page_txn_batches(paging_options)
-    |> limit(^paging_options.page_size)
-    |> select_repo(options).all()
-  end
-
   def get_table_rows_total_count(module, options) do
     table_name = module.__schema__(:source)
 
@@ -1813,197 +1676,6 @@ defmodule Explorer.Chain do
     else
       count
     end
-  end
-
-  @doc """
-  Lists `t:Explorer.Chain.OptimismOutputRoot.t/0`'s' in descending order based on output root index.
-
-  """
-  @spec list_output_roots :: [OptimismOutputRoot.t()]
-  def list_output_roots(options \\ []) do
-    paging_options = Keyword.get(options, :paging_options, @default_paging_options)
-
-    base_query =
-      from(r in OptimismOutputRoot,
-        order_by: [desc: r.l2_output_index],
-        select: r
-      )
-
-    base_query
-    |> page_output_roots(paging_options)
-    |> limit(^paging_options.page_size)
-    |> select_repo(options).all()
-  end
-
-  @doc """
-  Lists `t:Explorer.Chain.OptimismDeposit.t/0`'s' in descending order based on l1_block_number and l2_transaction_hash.
-
-  """
-  @spec list_optimism_deposits :: [OptimismDeposit.t()]
-  def list_optimism_deposits(options \\ []) do
-    paging_options = Keyword.get(options, :paging_options, @default_paging_options)
-
-    base_query =
-      from(d in OptimismDeposit,
-        order_by: [desc: d.l1_block_number, desc: d.l2_transaction_hash]
-      )
-
-    base_query
-    |> join_association(:l2_transaction, :required)
-    |> page_deposits(paging_options)
-    |> limit(^paging_options.page_size)
-    |> select_repo(options).all()
-  end
-
-  @doc """
-  Lists `t:Explorer.Chain.OptimismWithdrawal.t/0`'s' in descending order based on message nonce.
-
-  """
-  @spec list_optimism_withdrawals :: [OptimismWithdrawal.t()]
-  def list_optimism_withdrawals(options \\ []) do
-    paging_options = Keyword.get(options, :paging_options, @default_paging_options)
-
-    base_query =
-      from(w in OptimismWithdrawal,
-        order_by: [desc: w.msg_nonce],
-        left_join: l2_tx in Transaction,
-        on: w.l2_transaction_hash == l2_tx.hash,
-        left_join: l2_block in Block,
-        on: w.l2_block_number == l2_block.number,
-        left_join: we in OptimismWithdrawalEvent,
-        on: we.withdrawal_hash == w.hash and we.l1_event_type == :WithdrawalFinalized,
-        select: %{
-          msg_nonce: w.msg_nonce,
-          hash: w.hash,
-          l2_block_number: w.l2_block_number,
-          l2_timestamp: l2_block.timestamp,
-          l2_transaction_hash: w.l2_transaction_hash,
-          l1_transaction_hash: we.l1_transaction_hash,
-          from: l2_tx.from_address_hash
-        }
-      )
-
-    base_query
-    |> page_optimism_withdrawals(paging_options)
-    |> limit(^paging_options.page_size)
-    |> select_repo(options).all()
-  end
-
-  @doc """
-    Gets withdrawal status for Optimism Withdrawal transaction.
-    Returns the status and the corresponding L1 transaction hash if the status is `Relayed`.
-  """
-  @spec optimism_withdrawal_transaction_status(Hash.t()) :: {String.t(), Hash.t() | nil}
-  def optimism_withdrawal_transaction_status(l2_transaction_hash) do
-    w =
-      Repo.replica().one(
-        from(w in OptimismWithdrawal,
-          where: w.l2_transaction_hash == ^l2_transaction_hash,
-          left_join: l2_block in Block,
-          on: w.l2_block_number == l2_block.number,
-          left_join: we in OptimismWithdrawalEvent,
-          on: we.withdrawal_hash == w.hash and we.l1_event_type == :WithdrawalFinalized,
-          select: %{
-            hash: w.hash,
-            l2_timestamp: l2_block.timestamp,
-            l1_transaction_hash: we.l1_transaction_hash
-          }
-        )
-      )
-
-    if is_nil(w) do
-      {"Unknown", nil}
-    else
-      {status, _} = optimism_withdrawal_status(w)
-      {status, w.l1_transaction_hash}
-    end
-  end
-
-  @doc """
-    Gets Optimism Withdrawal status and remaining time to unlock (when the status is `In challenge period`).
-  """
-  @spec optimism_withdrawal_status(map()) :: {String.t(), DateTime.t() | nil}
-  def optimism_withdrawal_status(w) when is_nil(w.l1_transaction_hash) do
-    l1_timestamp =
-      Repo.replica().one(
-        from(
-          we in OptimismWithdrawalEvent,
-          select: we.l1_timestamp,
-          where: we.withdrawal_hash == ^w.hash and we.l1_event_type == :WithdrawalProven
-        )
-      )
-
-    if is_nil(l1_timestamp) do
-      last_root_timestamp =
-        Repo.replica().one(
-          from(root in OptimismOutputRoot,
-            select: root.l1_timestamp,
-            order_by: [desc: root.l2_output_index],
-            limit: 1
-          )
-        ) || 0
-
-      if w.l2_timestamp > last_root_timestamp do
-        {"Waiting for state root", nil}
-      else
-        {"Ready to prove", nil}
-      end
-    else
-      challenge_period =
-        case OptimismFinalizationPeriod.get_period() do
-          nil -> 604_800
-          period -> period
-        end
-
-      if DateTime.compare(l1_timestamp, DateTime.add(DateTime.utc_now(), -challenge_period, :second)) == :lt do
-        {"Ready for relay", nil}
-      else
-        {"In challenge period", DateTime.add(l1_timestamp, challenge_period, :second)}
-      end
-    end
-  end
-
-  def optimism_withdrawal_status(_w) do
-    {"Relayed", nil}
-  end
-
-  @doc """
-  Lists the top `t:Explorer.Chain.Token.t/0`'s'.
-
-  """
-  @spec list_top_tokens(String.t()) :: [{Token.t(), non_neg_integer()}]
-  def list_top_tokens(filter, options \\ []) do
-    paging_options = Keyword.get(options, :paging_options, @default_paging_options)
-    token_type = Keyword.get(options, :token_type, nil)
-    sorting = Keyword.get(options, :sorting, [])
-
-    fetch_top_tokens(filter, paging_options, token_type, sorting, options)
-  end
-
-  defp fetch_top_tokens(filter, paging_options, token_type, sorting, options) do
-    base_query = Token.base_token_query(token_type, sorting)
-
-    base_query_with_paging =
-      base_query
-      |> Token.page_tokens(paging_options, sorting)
-      |> limit(^paging_options.page_size)
-
-    query =
-      if filter && filter !== "" do
-        case Search.prepare_search_term(filter) do
-          {:some, filter_term} ->
-            base_query_with_paging
-            |> where(fragment("to_tsvector('english', symbol || ' ' || name) @@ to_tsquery(?)", ^filter_term))
-
-          _ ->
-            base_query_with_paging
-        end
-      else
-        base_query_with_paging
-      end
-
-    query
-    |> select_repo(options).all()
   end
 
   @doc """
@@ -2177,7 +1849,8 @@ defmodule Explorer.Chain do
       from(
         po in PendingBlockOperation,
         where: not is_nil(po.block_number),
-        select: po.block_number
+        select: po.block_number,
+        order_by: [desc: po.block_number]
       )
 
     query
@@ -2562,26 +2235,50 @@ defmodule Explorer.Chain do
     range_max = max(range_start, range_end)
 
     ordered_missing_query =
-      from(b in Block,
-        right_join:
-          missing_range in fragment(
-            """
-            (
-              SELECT distinct b1.number
-              FROM generate_series((?)::integer, (?)::integer) AS b1(number)
-              WHERE NOT EXISTS
-                (SELECT 1 FROM blocks b2 WHERE b2.number=b1.number AND b2.consensus)
-              ORDER BY b1.number DESC
-            )
-            """,
-            ^range_min,
-            ^range_max
-          ),
-        on: b.number == missing_range.number,
-        select: missing_range.number,
-        order_by: missing_range.number,
-        distinct: missing_range.number
-      )
+      if Application.get_env(:explorer, :chain_type) == "filecoin" do
+        from(b in Block,
+          right_join:
+            missing_range in fragment(
+              """
+              (
+                SELECT distinct b1.number
+                FROM generate_series((?)::integer, (?)::integer) AS b1(number)
+                WHERE NOT EXISTS
+                  (SELECT 1 FROM blocks b2 WHERE b2.number=b1.number AND b2.consensus)
+                AND NOT EXISTS (SELECT 1 FROM null_round_heights nrh where nrh.height=b1.number)
+                ORDER BY b1.number DESC
+              )
+              """,
+              ^range_min,
+              ^range_max
+            ),
+          on: b.number == missing_range.number,
+          select: missing_range.number,
+          order_by: missing_range.number,
+          distinct: missing_range.number
+        )
+      else
+        from(b in Block,
+          right_join:
+            missing_range in fragment(
+              """
+              (
+                SELECT distinct b1.number
+                FROM generate_series((?)::integer, (?)::integer) AS b1(number)
+                WHERE NOT EXISTS
+                  (SELECT 1 FROM blocks b2 WHERE b2.number=b1.number AND b2.consensus)
+                ORDER BY b1.number DESC
+              )
+              """,
+              ^range_min,
+              ^range_max
+            ),
+          on: b.number == missing_range.number,
+          select: missing_range.number,
+          order_by: missing_range.number,
+          distinct: missing_range.number
+        )
+      end
 
     missing_blocks = Repo.all(ordered_missing_query, timeout: :infinity)
 
@@ -2719,13 +2416,13 @@ defmodule Explorer.Chain do
              DateTime.compare(timestamp, given_timestamp) == :eq do
           number
         else
-          number - 1
+          BlockNumberHelper.previous_block_number(number)
         end
 
       :after ->
         if DateTime.compare(timestamp, given_timestamp) == :lt ||
              DateTime.compare(timestamp, given_timestamp) == :eq do
-          number + 1
+          BlockNumberHelper.next_block_number(number)
         else
           number
         end
@@ -3537,8 +3234,8 @@ defmodule Explorer.Chain do
 
   def limit_showing_transactions, do: @limit_showing_transactions
 
-  defp join_association(query, [{association, nested_preload}], necessity)
-       when is_atom(association) and is_atom(nested_preload) do
+  def join_association(query, [{association, nested_preload}], necessity)
+      when is_atom(association) and is_atom(nested_preload) do
     case necessity do
       :optional ->
         preload(query, [{^association, ^nested_preload}])
@@ -3554,7 +3251,7 @@ defmodule Explorer.Chain do
     end
   end
 
-  defp join_association(query, association, necessity) do
+  def join_association(query, association, necessity) do
     case necessity do
       :optional ->
         preload(query, ^association)
@@ -4161,8 +3858,12 @@ defmodule Explorer.Chain do
   """
   @spec update_token(Token.t(), map()) :: {:ok, Token.t()} | {:error, Ecto.Changeset.t()}
   def update_token(%Token{contract_address_hash: address_hash} = token, params \\ %{}) do
-    token_changeset = Token.changeset(token, Map.put(params, :updated_at, DateTime.utc_now()))
-    address_name_changeset = Address.Name.changeset(%Address.Name{}, Map.put(params, :address_hash, address_hash))
+    filtered_params = for({key, value} <- params, value !== "" && !is_nil(value), do: {key, value}) |> Enum.into(%{})
+
+    token_changeset = Token.changeset(token, Map.put(filtered_params, :updated_at, DateTime.utc_now()))
+
+    address_name_changeset =
+      Address.Name.changeset(%Address.Name{}, Map.put(filtered_params, :address_hash, address_hash))
 
     stale_error_field = :contract_address_hash
     stale_error_message = "is up to date"

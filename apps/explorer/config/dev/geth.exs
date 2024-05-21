@@ -18,6 +18,7 @@ config :explorer,
       method_to_url: [
         eth_call: ConfigHelper.eth_call_url("http://localhost:8545"),
         debug_traceTransaction: System.get_env("ETHEREUM_JSONRPC_TRACE_URL") || "http://localhost:8545",
+        debug_traceBlockByNumber: System.get_env("ETHEREUM_JSONRPC_TRACE_URL") || "http://localhost:8545",
         optimism_btcFinalityByBlockHash: System.get_env("ETHEREUM_JSONRPC_OP_NODE_URL") || "http://localhost:8547"
       ],
       http_options: [recv_timeout: timeout, timeout: timeout, hackney: hackney_opts]

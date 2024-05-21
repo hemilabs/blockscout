@@ -10,6 +10,7 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
   alias Explorer.{Chain, Market}
   alias Explorer.Chain.{Address, Block, InternalTransaction, Log, Token, Transaction, Wei}
   alias Explorer.Chain.Block.Reward
+  alias Explorer.Chain.Optimism.Withdrawal, as: OptimismWithdrawal
   alias Explorer.Chain.PolygonEdge.Reader
   alias Explorer.Chain.Transaction.StateChange
   alias Explorer.Counters.AverageBlockTime
@@ -367,7 +368,7 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
     max_priority_fee_per_gas = transaction.max_priority_fee_per_gas
     max_fee_per_gas = transaction.max_fee_per_gas
 
-    priority_fee_per_gas = priority_fee_per_gas(max_priority_fee_per_gas, base_fee_per_gas, max_fee_per_gas)
+    priority_fee_per_gas = Transaction.priority_fee_per_gas(max_priority_fee_per_gas, base_fee_per_gas, max_fee_per_gas)
 
     burnt_fees = burnt_fees(transaction, max_fee_per_gas, base_fee_per_gas)
 
@@ -410,8 +411,8 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
       "confirmations" => transaction.block |> Chain.confirmations(block_height: block_height) |> format_confirmations(),
       "confirmation_duration" => processing_time_duration(transaction),
       "value" => transaction.value,
-      "fee" => transaction |> Chain.fee(:wei) |> format_fee(),
-      "gas_price" => transaction.gas_price,
+      "fee" => transaction |> Transaction.fee(:wei) |> format_fee(),
+      "gas_price" => transaction.gas_price || Transaction.effective_gas_price(transaction),
       "type" => transaction.type,
       "gas_used" => transaction.gas_used,
       "gas_limit" => transaction.gas,
@@ -453,6 +454,7 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
     end
   end
 
+  # credo:disable-for-next-line
   defp chain_type_fields(result, transaction, single_tx?, conn, watchlist_names) do
     case {single_tx?, Application.get_env(:explorer, :chain_type)} do
       {true, "polygon_edge"} ->
@@ -468,6 +470,14 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
           |> add_optional_transaction_field(transaction, "zkevm_verify_hash", :zkevm_verify_transaction, :hash)
 
         Map.put(extended_result, "zkevm_status", zkevm_status(extended_result))
+
+      {true, "optimism"} ->
+        result
+        |> add_optional_transaction_field(transaction, :l1_fee)
+        |> add_optional_transaction_field(transaction, :l1_fee_scalar)
+        |> add_optional_transaction_field(transaction, :l1_gas_price)
+        |> add_optional_transaction_field(transaction, :l1_gas_used)
+        |> add_optimism_fields(transaction.hash, single_tx?)
 
       {true, "suave"} ->
         suave_fields(transaction, result, single_tx?, conn, watchlist_names)
@@ -556,7 +566,7 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
           "gas_price" => transaction.wrapped_gas_price,
           "fee" =>
             format_fee(
-              Chain.fee(
+              Transaction.fee(
                 %Transaction{gas: transaction.wrapped_gas, gas_price: transaction.wrapped_gas_price, gas_used: nil},
                 :wei
               )
@@ -578,12 +588,19 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
   end
 
   defp add_optimism_fields(result, transaction_hash, single_tx?) do
-    if single_tx? do
-      {op_withdrawal_status, op_l1_transaction_hash} = Chain.optimism_withdrawal_transaction_status(transaction_hash)
+    if Application.get_env(:explorer, :chain_type) == "optimism" && single_tx? do
+      withdrawals =
+        transaction_hash
+        |> OptimismWithdrawal.transaction_statuses()
+        |> Enum.map(fn {nonce, status, l1_transaction_hash} ->
+          %{
+            "nonce" => nonce,
+            "status" => status,
+            "l1_transaction_hash" => l1_transaction_hash
+          }
+        end)
 
-      result
-      |> Map.put("op_withdrawal_status", op_withdrawal_status)
-      |> Map.put("op_l1_transaction_hash", op_l1_transaction_hash)
+      Map.put(result, "op_withdrawals", withdrawals)
     else
       result
     end
@@ -612,15 +629,6 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
   """
   def transaction_actions(actions) do
     render("transaction_actions.json", %{actions: actions})
-  end
-
-  defp priority_fee_per_gas(max_priority_fee_per_gas, base_fee_per_gas, max_fee_per_gas) do
-    if is_nil(max_priority_fee_per_gas) or is_nil(base_fee_per_gas),
-      do: nil,
-      else:
-        Enum.min_by([max_priority_fee_per_gas, Wei.sub(max_fee_per_gas, base_fee_per_gas)], fn x ->
-          Wei.to(x, :wei)
-        end)
   end
 
   defp burnt_fees(transaction, max_fee_per_gas, base_fee_per_gas) do

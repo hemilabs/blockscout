@@ -22,11 +22,11 @@ defmodule Indexer.Fetcher.Optimism do
   alias EthereumJSONRPC.Block.ByNumber
   alias Explorer.Chain.Events.{Publisher, Subscriber}
   alias Indexer.{BoundQueue, Helper}
-  alias Indexer.Fetcher.{OptimismOutputRoot, OptimismTxnBatch, OptimismWithdrawalEvent}
 
   @fetcher_name :optimism
   @block_check_interval_range_size 100
   @eth_get_logs_range_size 1000
+  @finite_retries_number 3
 
   def child_spec(start_link_arguments) do
     spec = %{
@@ -47,7 +47,11 @@ defmodule Indexer.Fetcher.Optimism do
   def init(_args) do
     Logger.metadata(fetcher: @fetcher_name)
 
-    modules_using_reorg_monitor = [OptimismTxnBatch, OptimismOutputRoot, OptimismWithdrawalEvent]
+    modules_using_reorg_monitor = [
+      Indexer.Fetcher.Optimism.TxnBatch,
+      Indexer.Fetcher.Optimism.OutputRoot,
+      Indexer.Fetcher.Optimism.WithdrawalEvent
+    ]
 
     reorg_monitor_not_needed =
       modules_using_reorg_monitor
@@ -84,7 +88,7 @@ defmodule Indexer.Fetcher.Optimism do
           prev_latest: prev_latest
         } = state
       ) do
-    {:ok, latest} = get_block_number_by_tag("latest", json_rpc_named_arguments, 100_000_000)
+    {:ok, latest} = get_block_number_by_tag("latest", json_rpc_named_arguments, Helper.infinite_retries_number())
 
     if latest < prev_latest do
       Logger.warning("Reorg detected: previous latest block ##{prev_latest}, current latest block ##{latest}.")
@@ -97,11 +101,23 @@ defmodule Indexer.Fetcher.Optimism do
     {:noreply, %{state | prev_latest: latest}}
   end
 
+  @doc """
+  Calculates average block time in milliseconds (based on the latest 100 blocks) divided by 2.
+  Sends corresponding requests to the RPC node.
+  Returns a tuple {:ok, block_check_interval, last_safe_block}
+  where `last_safe_block` is the number of the recent `safe` or `latest` block (depending on which one is available).
+  Returns {:error, description} in case of error.
+  """
+  @spec get_block_check_interval(list()) :: {:ok, non_neg_integer(), non_neg_integer()} | {:error, any()}
   def get_block_check_interval(json_rpc_named_arguments) do
-    with {:ok, last_safe_block} <- get_block_number_by_tag("safe", json_rpc_named_arguments),
-         first_block = max(last_safe_block - @block_check_interval_range_size, 1),
-         {:ok, first_block_timestamp} <- get_block_timestamp_by_number(first_block, json_rpc_named_arguments),
-         {:ok, last_safe_block_timestamp} <- get_block_timestamp_by_number(last_safe_block, json_rpc_named_arguments) do
+    {last_safe_block, _} = get_safe_block(json_rpc_named_arguments)
+
+    first_block = max(last_safe_block - @block_check_interval_range_size, 1)
+
+    with {:ok, first_block_timestamp} <-
+           get_block_timestamp_by_number(first_block, json_rpc_named_arguments, Helper.infinite_retries_number()),
+         {:ok, last_safe_block_timestamp} <-
+           get_block_timestamp_by_number(last_safe_block, json_rpc_named_arguments, Helper.infinite_retries_number()) do
       block_check_interval =
         ceil((last_safe_block_timestamp - first_block_timestamp) / (last_safe_block - first_block) * 1000 / 2)
 
@@ -113,9 +129,40 @@ defmodule Indexer.Fetcher.Optimism do
     end
   end
 
-  def get_block_number_by_tag(tag, json_rpc_named_arguments, retries \\ 3) do
+  @doc """
+  Fetches block number by its tag (e.g. `latest` or `safe`) using RPC request.
+  Performs a specified number of retries (up to) if the first attempt returns error.
+  """
+  @spec get_block_number_by_tag(binary(), list(), non_neg_integer()) :: {:ok, non_neg_integer()} | {:error, atom()}
+  def get_block_number_by_tag(tag, json_rpc_named_arguments, retries \\ @finite_retries_number) do
     error_message = &"Cannot fetch #{tag} block number. Error: #{inspect(&1)}"
-    repeated_call(&fetch_block_number_by_tag_op_version/2, [tag, json_rpc_named_arguments], error_message, retries)
+
+    Helper.repeated_call(
+      &fetch_block_number_by_tag_op_version/2,
+      [tag, json_rpc_named_arguments],
+      error_message,
+      retries
+    )
+  end
+
+  @doc """
+  Tries to get `safe` block number from the RPC node.
+  If it's not available, gets the `latest` one.
+  Returns a tuple of `{block_number, is_latest}`
+  where `is_latest` is true if the `safe` is not available.
+  """
+  @spec get_safe_block(list()) :: {non_neg_integer(), boolean()}
+  def get_safe_block(json_rpc_named_arguments) do
+    case get_block_number_by_tag("safe", json_rpc_named_arguments) do
+      {:ok, safe_block} ->
+        {safe_block, false}
+
+      {:error, :not_found} ->
+        {:ok, latest_block} =
+          get_block_number_by_tag("latest", json_rpc_named_arguments, Helper.infinite_retries_number())
+
+        {latest_block, true}
+    end
   end
 
   defp get_block_timestamp_by_number_inner(number, json_rpc_named_arguments) do
@@ -138,13 +185,32 @@ defmodule Indexer.Fetcher.Optimism do
     end
   end
 
-  def get_block_timestamp_by_number(number, json_rpc_named_arguments, retries \\ 3) do
+  @doc """
+  Fetches block timestamp by its number using RPC request.
+  Performs a specified number of retries (up to) if the first attempt returns error.
+  """
+  @spec get_block_timestamp_by_number(non_neg_integer(), list(), non_neg_integer()) ::
+          {:ok, non_neg_integer()} | {:error, any()}
+  def get_block_timestamp_by_number(number, json_rpc_named_arguments, retries \\ @finite_retries_number) do
     func = &get_block_timestamp_by_number_inner/2
     args = [number, json_rpc_named_arguments]
     error_message = &"Cannot fetch block ##{number} or its timestamp. Error: #{inspect(&1)}"
-    repeated_call(func, args, error_message, retries)
+    Helper.repeated_call(func, args, error_message, retries)
   end
 
+  @doc """
+  Fetches logs emitted by the specified contract (address)
+  within the specified block range and the first topic from the RPC node.
+  Performs a specified number of retries (up to) if the first attempt returns error.
+  """
+  @spec get_logs(
+          non_neg_integer() | binary(),
+          non_neg_integer() | binary(),
+          binary(),
+          binary() | list(),
+          list(),
+          non_neg_integer()
+        ) :: {:ok, list()} | {:error, term()}
   def get_logs(from_block, to_block, address, topic0, json_rpc_named_arguments, retries) do
     processed_from_block = if is_integer(from_block), do: integer_to_quantity(from_block), else: from_block
     processed_to_block = if is_integer(to_block), do: integer_to_quantity(to_block), else: to_block
@@ -165,10 +231,15 @@ defmodule Indexer.Fetcher.Optimism do
 
     error_message = &"Cannot fetch logs for the block range #{from_block}..#{to_block}. Error: #{inspect(&1)}"
 
-    repeated_call(&json_rpc/2, [req, json_rpc_named_arguments], error_message, retries)
+    Helper.repeated_call(&json_rpc/2, [req, json_rpc_named_arguments], error_message, retries)
   end
 
-  def get_transaction_by_hash(hash, json_rpc_named_arguments, retries_left \\ 3)
+  @doc """
+  Fetches transaction data by its hash using RPC request.
+  Performs a specified number of retries (up to) if the first attempt returns error.
+  """
+  @spec get_transaction_by_hash(binary() | nil, list(), non_neg_integer()) :: {:ok, any()} | {:error, any()}
+  def get_transaction_by_hash(hash, json_rpc_named_arguments, retries_left \\ @finite_retries_number)
 
   def get_transaction_by_hash(hash, _json_rpc_named_arguments, _retries_left) when is_nil(hash), do: {:ok, nil}
 
@@ -182,13 +253,17 @@ defmodule Indexer.Fetcher.Optimism do
 
     error_message = &"eth_getTransactionByHash failed. Error: #{inspect(&1)}"
 
-    repeated_call(&json_rpc/2, [req, json_rpc_named_arguments], error_message, retries)
+    Helper.repeated_call(&json_rpc/2, [req, json_rpc_named_arguments], error_message, retries)
   end
 
   def get_logs_range_size do
     @eth_get_logs_range_size
   end
 
+  @doc """
+  Forms JSON RPC named arguments for the given RPC URL.
+  """
+  @spec json_rpc_named_arguments(binary()) :: list()
   def json_rpc_named_arguments(optimism_l1_rpc) do
     [
       transport: EthereumJSONRPC.HTTP,
@@ -205,9 +280,9 @@ defmodule Indexer.Fetcher.Optimism do
   end
 
   def init_continue(env, contract_address, caller)
-      when caller in [Indexer.Fetcher.OptimismWithdrawalEvent, Indexer.Fetcher.OptimismOutputRoot] do
+      when caller in [Indexer.Fetcher.Optimism.WithdrawalEvent, Indexer.Fetcher.Optimism.OutputRoot] do
     {contract_name, table_name, start_block_note} =
-      if caller == Indexer.Fetcher.OptimismWithdrawalEvent do
+      if caller == Indexer.Fetcher.Optimism.WithdrawalEvent do
         {"Optimism Portal", "op_withdrawal_events", "Withdrawals L1"}
       else
         {"Output Oracle", "op_output_roots", "Output Roots"}
@@ -217,7 +292,7 @@ defmodule Indexer.Fetcher.Optimism do
          {:reorg_monitor_started, true} <- {:reorg_monitor_started, !is_nil(Process.whereis(Indexer.Fetcher.Optimism))},
          optimism_l1_rpc = Application.get_all_env(:indexer)[Indexer.Fetcher.Optimism][:optimism_l1_rpc],
          {:rpc_l1_undefined, false} <- {:rpc_l1_undefined, is_nil(optimism_l1_rpc)},
-         {:contract_is_valid, true} <- {:contract_is_valid, Helper.is_address_correct?(contract_address)},
+         {:contract_is_valid, true} <- {:contract_is_valid, Helper.address_correct?(contract_address)},
          start_block_l1 = parse_integer(env[:start_block_l1]),
          false <- is_nil(start_block_l1),
          true <- start_block_l1 > 0,
@@ -265,7 +340,7 @@ defmodule Indexer.Fetcher.Optimism do
 
       {:error, error_data} ->
         Logger.error(
-          "Cannot get last L1 transaction from RPC by its hash, last safe block, or block timestamp by its number due to RPC error: #{inspect(error_data)}"
+          "Cannot get last L1 transaction from RPC by its hash, last safe/latest block, or block timestamp by its number due to RPC error: #{inspect(error_data)}"
         )
 
         {:stop, :normal, %{}}
@@ -283,65 +358,8 @@ defmodule Indexer.Fetcher.Optimism do
     end
   end
 
-  def log_blocks_chunk_handling(chunk_start, chunk_end, start_block, end_block, items_count, layer) do
-    is_start = is_nil(items_count)
-
-    {type, found} =
-      if is_start do
-        {"Start", ""}
-      else
-        {"Finish", " Found #{items_count}."}
-      end
-
-    target_range =
-      if chunk_start != start_block or chunk_end != end_block do
-        progress =
-          if is_start do
-            ""
-          else
-            percentage =
-              (chunk_end - start_block + 1)
-              |> Decimal.div(end_block - start_block + 1)
-              |> Decimal.mult(100)
-              |> Decimal.round(2)
-              |> Decimal.to_string()
-
-            " Progress: #{percentage}%"
-          end
-
-        " Target range: #{start_block}..#{end_block}.#{progress}"
-      else
-        ""
-      end
-
-    if chunk_start == chunk_end do
-      Logger.info("#{type} handling #{layer} block ##{chunk_start}.#{found}#{target_range}")
-    else
-      Logger.info("#{type} handling #{layer} block range #{chunk_start}..#{chunk_end}.#{found}#{target_range}")
-    end
-  end
-
-  defp repeated_call(func, args, error_message, retries_left) do
-    case apply(func, args) do
-      {:ok, _} = res ->
-        res
-
-      {:error, message} = err ->
-        retries_left = retries_left - 1
-
-        if retries_left <= 0 do
-          Logger.error(error_message.(message))
-          err
-        else
-          Logger.error("#{error_message.(message)} Retrying...")
-          :timer.sleep(3000)
-          repeated_call(func, args, error_message, retries_left)
-        end
-    end
-  end
-
   def repeated_request(req, error_message, json_rpc_named_arguments, retries) do
-    repeated_call(&json_rpc/2, [req, json_rpc_named_arguments], error_message, retries)
+    Helper.repeated_call(&json_rpc/2, [req, json_rpc_named_arguments], error_message, retries)
   end
 
   def reorg_block_pop(fetcher_name) do

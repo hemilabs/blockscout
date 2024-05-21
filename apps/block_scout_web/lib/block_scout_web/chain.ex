@@ -40,11 +40,13 @@ defmodule BlockScoutWeb.Chain do
     Transaction,
     Transaction.StateChange,
     UserOperation,
-    Wei,
-    Withdrawal
+    Wei
   }
 
-  alias Explorer.Chain.Zkevm.TransactionBatch
+  alias Explorer.Chain.Optimism.Deposit, as: OptimismDeposit
+  alias Explorer.Chain.Optimism.OutputRoot, as: OptimismOutputRoot
+
+  alias Explorer.Chain.PolygonZkevm.TransactionBatch
   alias Explorer.PagingOptions
 
   defimpl Poison.Encoder, for: Decimal do
@@ -646,7 +648,7 @@ defmodule BlockScoutWeb.Chain do
     }
   end
 
-  defp paging_params(%Withdrawal{index: index}) do
+  defp paging_params(%{index: index}) do
     %{"index" => index}
   end
 

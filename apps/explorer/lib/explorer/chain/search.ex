@@ -403,7 +403,7 @@ defmodule Explorer.Chain.Search do
   end
 
   defp search_tx_query(term) do
-    if DenormalizationHelper.denormalization_finished?() do
+    if DenormalizationHelper.transactions_denormalization_finished?() do
       transaction_search_fields =
         search_fields()
         |> Map.put(:tx_hash, dynamic([transaction], transaction.hash))
@@ -611,6 +611,7 @@ defmodule Explorer.Chain.Search do
     |> Map.put(:address_hash, ens_info[:address_hash])
     |> Map.put(:type, "address")
     |> Map.put(:ens_info, ens_info)
+    |> Map.put(:timestamp, nil)
   end
 
   defp merge_address_search_result_with_ens_info([address], ens_info) do

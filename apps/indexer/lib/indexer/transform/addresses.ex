@@ -150,6 +150,11 @@ defmodule Indexer.Transform.Addresses do
         %{from: :block_number, to: :fetched_coin_balance_block_number},
         %{from: :address_hash, to: :hash}
       ]
+    ],
+    polygon_zkevm_bridge_operations: [
+      [
+        %{from: :l2_token_address, to: :hash}
+      ]
     ]
   }
 
@@ -457,6 +462,11 @@ defmodule Indexer.Transform.Addresses do
               required(:address_hash) => String.t(),
               required(:block_number) => non_neg_integer()
             }
+          ],
+          optional(:polygon_zkevm_bridge_operations) => [
+            %{
+              optional(:l2_token_address) => String.t()
+            }
           ]
         }) :: [params]
   def extract_addresses(fetched_data, options \\ []) when is_map(fetched_data) and is_list(options) do
@@ -498,7 +508,7 @@ defmodule Indexer.Transform.Addresses do
   end
 
   defp find_tx_action_addresses(block_number, value, accumulator) when is_binary(value) do
-    if Helper.is_address_correct?(value) do
+    if Helper.address_correct?(value) do
       [%{:fetched_coin_balance_block_number => block_number, :hash => value} | accumulator]
     else
       accumulator
