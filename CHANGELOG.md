@@ -10,14 +10,23 @@
 
 ### Features
 
+- [#9490](https://github.com/blockscout/blockscout/pull/9490) - Add blob transaction counter and filter in block view
 - [#9461](https://github.com/blockscout/blockscout/pull/9461) - Fetch blocks without internal transactions backwards
 - [#9460](https://github.com/blockscout/blockscout/pull/9460) - Optimism chain type
+- [#9409](https://github.com/blockscout/blockscout/pull/9409) - ETH JSON RPC extension
+- [#9390](https://github.com/blockscout/blockscout/pull/9390) - Add stability validators
 - [#8702](https://github.com/blockscout/blockscout/pull/8702) - Add OP withdrawal status to transaction page in API
 - [#7200](https://github.com/blockscout/blockscout/pull/7200) - Add Optimism BedRock Deposits to the main page in API
 - [#6980](https://github.com/blockscout/blockscout/pull/6980) - Add Optimism BedRock support (Txn Batches, Output Roots, Deposits, Withdrawals)
 
 ### Fixes
 
+- [#9572](https://github.com/blockscout/blockscout/pull/9572) - Fix Shibarium L1 fetcher
+- [#9563](https://github.com/blockscout/blockscout/pull/9563) - Fix timestamp handler for unfinalized zkEVM batches
+- [#9560](https://github.com/blockscout/blockscout/pull/9560) - Fix fetch pending transaction for hyperledger besu client
+- [#9555](https://github.com/blockscout/blockscout/pull/9555) - Fix EIP-1967 beacon proxy pattern detection
+- [#9518](https://github.com/blockscout/blockscout/pull/9518) - Fix MultipleResultsError in `smart_contract_creation_tx_bytecode/1`
+- [#9514](https://github.com/blockscout/blockscout/pull/9514) - Fix missing `0x` prefix for `blockNumber`, `logIndex`, `transactionIndex` and remove `transactionLogIndex` in `eth_getLogs` response.
 - [#9512](https://github.com/blockscout/blockscout/pull/9512) - Docker-compose 2.24.6 compatibility
 - [#9262](https://github.com/blockscout/blockscout/pull/9262) - Fix withdrawal status
 - [#9123](https://github.com/blockscout/blockscout/pull/9123) - Fixes in Optimism due to changed log topics type
@@ -35,6 +44,8 @@
 
 ### Chore
 
+- [#9571](https://github.com/blockscout/blockscout/pull/9571) - Support Optimism Ecotone upgrade by Indexer.Fetcher.Optimism.TxnBatch module
+- [#9562](https://github.com/blockscout/blockscout/pull/9562) - Add cancun evm version
 - [#9260](https://github.com/blockscout/blockscout/pull/9260) - Optimism Delta upgrade support by Indexer.Fetcher.OptimismTxnBatch module
 - [#8740](https://github.com/blockscout/blockscout/pull/8740) - Add delay to Indexer.Fetcher.OptimismTxnBatch module initialization
 
