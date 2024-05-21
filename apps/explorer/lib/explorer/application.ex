@@ -72,7 +72,6 @@ defmodule Explorer.Application do
       GasPriceOracle,
       GasUsage,
       NetVersion,
-      OptimismFinalizationPeriod,
       PendingBlockOperation,
       Transaction,
       StateChanges,
