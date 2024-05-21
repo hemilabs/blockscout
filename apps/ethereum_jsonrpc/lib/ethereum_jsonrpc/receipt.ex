@@ -374,13 +374,9 @@ defmodule EthereumJSONRPC.Receipt do
     :ignore
   end
 
-  # EIP-4844 transaction receipt fields
-  defp entry_to_elixir({key, _}) when key in ~w(blobGasUsed blobGasPrice) do
-    :ignore
-  end
-
-  # Hemi specific transaction receipt fields
-  defp entry_to_elixir({key, _}) when key in ~w(popPayoutNonce) do
+  # zkSync specific transaction receipt fields
+  defp entry_to_elixir({key, _})
+       when key in ~w(l1BatchNumber l1BatchTxIndex l2ToL1Logs) do
     :ignore
   end
 
