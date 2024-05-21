@@ -461,6 +461,25 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
     |> chain_type_fields(transaction, single_tx?, conn, watchlist_names)
   end
 
+  defp add_optional_transaction_field(result, transaction, field) do
+    case Map.get(transaction, field) do
+      nil -> result
+      value -> Map.put(result, Atom.to_string(field), value)
+    end
+  end
+
+  defp add_optimism_fields(result, transaction_hash, single_tx?) do
+    if single_tx? do
+      {op_withdrawal_status, op_l1_transaction_hash} = Chain.optimism_withdrawal_transaction_status(transaction_hash)
+
+      result
+      |> Map.put("op_withdrawal_status", op_withdrawal_status)
+      |> Map.put("op_l1_transaction_hash", op_l1_transaction_hash)
+    else
+      result
+    end
+  end
+
   def token_transfers(_, _conn, false), do: nil
   def token_transfers(%NotLoaded{}, _conn, _), do: nil
 
