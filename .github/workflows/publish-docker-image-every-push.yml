@@ -3,7 +3,7 @@ name: Publish Docker image on every push to default branch
 on:
   push:
     branches:
-      - production-optimism-stg
+      - production-optimism-stg # Hemi default branch
   workflow_dispatch:
 
 env:

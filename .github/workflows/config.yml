@@ -10,6 +10,7 @@ on:
       - production-eth-sepolia
       - production-fuse
       - production-optimism
+      - production-optimism-stg # Hemi default branch
       - production-immutable
       - production-iota
       - production-lukso
@@ -29,6 +30,7 @@ on:
     branches:
       - master
       - production-optimism
+      - production-optimism-stg # Hemi default branch
       - production-zksync
 
 env:
