@@ -58,11 +58,6 @@ defmodule Explorer.Chain do
     Import,
     InternalTransaction,
     Log,
-    OptimismDeposit,
-    OptimismOutputRoot,
-    OptimismTxnBatch,
-    OptimismWithdrawal,
-    OptimismWithdrawalEvent,
     PendingBlockOperation,
     SmartContract,
     Token,
@@ -79,7 +74,6 @@ defmodule Explorer.Chain do
     ContractsCounter,
     NewContractsCounter,
     NewVerifiedContractsCounter,
-    OptimismFinalizationPeriod,
     Transactions,
     Uncles,
     VerifiedContractsCounter,
@@ -3278,98 +3272,6 @@ defmodule Explorer.Chain do
     Enum.reduce(necessity_by_association, query, fn {association, join}, acc_query ->
       join_association(acc_query, association, join)
     end)
-  end
-
-  defp page_addresses(query, %PagingOptions{key: nil}), do: query
-
-  defp page_addresses(query, %PagingOptions{key: {coin_balance, hash}}) do
-    from(address in query,
-      where:
-        (address.fetched_coin_balance == ^coin_balance and address.hash > ^hash) or
-          address.fetched_coin_balance < ^coin_balance
-    )
-  end
-
-  defp page_deposits(query, %PagingOptions{key: nil}), do: query
-
-  defp page_deposits(query, %PagingOptions{key: {block_number, l2_tx_hash}}) do
-    from(d in query,
-      where: d.l1_block_number < ^block_number,
-      or_where: d.l1_block_number == ^block_number and d.l2_transaction_hash < ^l2_tx_hash
-    )
-  end
-
-  defp page_txn_batches(query, %PagingOptions{key: nil}), do: query
-
-  defp page_txn_batches(query, %PagingOptions{key: {block_number}}) do
-    from(tb in query, where: tb.l2_block_number < ^block_number)
-  end
-
-  defp page_output_roots(query, %PagingOptions{key: nil}), do: query
-
-  defp page_output_roots(query, %PagingOptions{key: {index}}) do
-    from(r in query, where: r.l2_output_index < ^index)
-  end
-
-  defp page_optimism_withdrawals(query, %PagingOptions{key: nil}), do: query
-
-  defp page_optimism_withdrawals(query, %PagingOptions{key: {nonce}}) do
-    from(w in query, where: w.msg_nonce < ^nonce)
-  end
-
-  defp page_tokens(query, %PagingOptions{key: nil}), do: query
-
-  defp page_tokens(query, %PagingOptions{key: {circulating_market_cap, holder_count, name, contract_address_hash}}) do
-    from(token in query,
-      where: ^page_tokens_circulating_market_cap(circulating_market_cap, holder_count, name, contract_address_hash)
-    )
-  end
-
-  defp page_tokens_circulating_market_cap(nil, holder_count, name, contract_address_hash) do
-    dynamic(
-      [t],
-      is_nil(t.circulating_market_cap) and ^page_tokens_holder_count(holder_count, name, contract_address_hash)
-    )
-  end
-
-  defp page_tokens_circulating_market_cap(circulating_market_cap, holder_count, name, contract_address_hash) do
-    dynamic(
-      [t],
-      is_nil(t.circulating_market_cap) or t.circulating_market_cap < ^circulating_market_cap or
-        (t.circulating_market_cap == ^circulating_market_cap and
-           ^page_tokens_holder_count(holder_count, name, contract_address_hash))
-    )
-  end
-
-  defp page_tokens_holder_count(nil, name, contract_address_hash) do
-    dynamic(
-      [t],
-      is_nil(t.holder_count) and ^page_tokens_name(name, contract_address_hash)
-    )
-  end
-
-  defp page_tokens_holder_count(holder_count, name, contract_address_hash) do
-    dynamic(
-      [t],
-      is_nil(t.holder_count) or t.holder_count < ^holder_count or
-        (t.holder_count == ^holder_count and ^page_tokens_name(name, contract_address_hash))
-    )
-  end
-
-  defp page_tokens_name(nil, contract_address_hash) do
-    dynamic([t], is_nil(t.name) and ^page_tokens_contract_address_hash(contract_address_hash))
-  end
-
-  defp page_tokens_name(name, contract_address_hash) do
-    dynamic(
-      [t],
-      is_nil(t.name) or
-        (t.name > ^name or (t.name == ^name and ^page_tokens_contract_address_hash(contract_address_hash)))
-    )
-  end
-
-  defp page_tokens_contract_address_hash(contract_address_hash) do
-    dynamic([t], t.contract_address_hash > ^contract_address_hash)
   end
 
   defp page_blocks(query, %PagingOptions{key: nil}), do: query

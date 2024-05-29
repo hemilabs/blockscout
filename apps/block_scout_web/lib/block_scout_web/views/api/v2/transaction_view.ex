@@ -452,12 +452,7 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
     }
 
     result
-    |> add_optional_transaction_field(transaction, :l1_fee)
-    |> add_optional_transaction_field(transaction, :l1_fee_scalar)
-    |> add_optional_transaction_field(transaction, :l1_gas_price)
-    |> add_optional_transaction_field(transaction, :l1_gas_used)
     |> add_optional_transaction_field(transaction, :btc_finality)
-    |> add_optimism_fields(transaction.hash, single_tx?)
     |> chain_type_fields(transaction, single_tx?, conn, watchlist_names)
   end
 
@@ -465,18 +460,6 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
     case Map.get(transaction, field) do
       nil -> result
       value -> Map.put(result, Atom.to_string(field), value)
-    end
-  end
-
-  defp add_optimism_fields(result, transaction_hash, single_tx?) do
-    if single_tx? do
-      {op_withdrawal_status, op_l1_transaction_hash} = Chain.optimism_withdrawal_transaction_status(transaction_hash)
-
-      result
-      |> Map.put("op_withdrawal_status", op_withdrawal_status)
-      |> Map.put("op_l1_transaction_hash", op_l1_transaction_hash)
-    else
-      result
     end
   end
 

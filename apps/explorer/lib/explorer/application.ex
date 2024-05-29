@@ -20,7 +20,6 @@ defmodule Explorer.Application do
     GasUsage,
     MinMissingBlockNumber,
     NetVersion,
-    OptimismFinalizationPeriod,
     PendingBlockOperation,
     StateChanges,
     Transaction,
