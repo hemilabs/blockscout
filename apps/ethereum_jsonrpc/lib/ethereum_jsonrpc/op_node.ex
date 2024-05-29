@@ -1,12 +1,16 @@
 defmodule EthereumJSONRPC.OpNode do
+  @moduledoc """
+  Ethereum JSONRPC methods that are only supported by Hemi.
+
+  The methods in this module are provided by "op-node" instead of "op-geth".
+  Therefore the `json_rpc_named_arguments.method_to_url` map shall contain
+  overrides for such RPC methods.
+  """
+
   alias EthereumJSONRPC
 
   @doc """
   Gets the bitcoin finality value of the given block hash.
-
-  The bitcoin finality data is provided by "op-node" instead of "op-geth",
-  therefore the `json_rpc_named_arguments.method_to_url` map shall contain an
-  override for the RPC method.
   """
   def get_block_btc_finality(block_hash) do
     # All requests will share the same id: 0. While this is not a problem and
