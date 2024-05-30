@@ -47,6 +47,16 @@ defmodule Explorer.ChainTest do
 
   setup :verify_on_exit!
 
+  setup do
+    # Mock the call to json_rpc/2 expected during the doctest
+    Mox.stub(EthereumJSONRPC.Mox, :json_rpc, fn
+      %{method: "optimism_btcFinalityByBlockHash"}, _ ->
+        {:ok, %{btc_finality: -9}}
+    end)
+
+    :ok
+  end
+
   describe "remove_nonconsensus_blocks_from_pending_ops/0" do
     test "removes pending ops for nonconsensus blocks" do
       block = insert(:block)
@@ -826,6 +836,15 @@ defmodule Explorer.ChainTest do
 
       %Transaction{hash: hash_without_index} = insert(:transaction)
 
+      expect(
+        EthereumJSONRPC.Mox,
+        :json_rpc,
+        2,
+        fn %{method: "optimism_btcFinalityByBlockHash"}, _ ->
+          {:ok, %{btc_finality: -9}}
+        end
+      )
+
       assert {:ok, %Transaction{hash: ^hash_with_block}} =
                Chain.hash_to_transaction(
                  hash_with_block,
@@ -871,6 +890,14 @@ defmodule Explorer.ChainTest do
           transaction_index: transaction.index
         )
       end)
+
+      expect(
+        EthereumJSONRPC.Mox,
+        :json_rpc,
+        fn %{method: "optimism_btcFinalityByBlockHash"}, _ ->
+          {:ok, %{btc_finality: -9}}
+        end
+      )
 
       assert {:ok, %Transaction{hash: ^hash_with_block}} = Chain.hash_to_transaction(hash_with_block)
     end
@@ -1734,6 +1761,14 @@ defmodule Explorer.ChainTest do
 
     test "with block" do
       %Block{number: number} = insert(:block)
+
+      expect(
+        EthereumJSONRPC.Mox,
+        :json_rpc,
+        fn %{method: "optimism_btcFinalityByBlockHash"}, _ ->
+          {:ok, %{btc_finality: -9}}
+        end
+      )
 
       assert {:ok, %Block{number: ^number}} = Chain.number_to_block(number)
     end

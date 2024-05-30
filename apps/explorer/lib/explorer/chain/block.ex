@@ -61,6 +61,9 @@ defmodule Explorer.Chain.Block.Schema do
         field(:base_fee_per_gas, Wei)
         field(:is_empty, :boolean)
 
+        # Hemi virtual fields
+        field(:btc_finality, :integer, virtual: true)
+
         timestamps()
 
         belongs_to(:miner, Address, foreign_key: :miner_hash, references: :hash, type: Hash.Address, null: false)

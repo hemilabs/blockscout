@@ -157,6 +157,9 @@ defmodule Explorer.Chain.Transaction.Schema do
         # in a different block. See: https://github.com/blockscout/blockscout/issues/1911
         field(:old_block_hash, Hash.Full)
 
+        # Hemi virtual fields
+        field(:btc_finality, :integer, virtual: true)
+
         timestamps()
 
         belongs_to(:block, Block, foreign_key: :block_hash, references: :hash, type: Hash.Full)
