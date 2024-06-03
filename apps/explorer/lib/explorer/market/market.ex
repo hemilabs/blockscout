@@ -14,9 +14,9 @@ defmodule Explorer.Market do
 
   Today's date is include as part of the day count
   """
-  @spec fetch_recent_history() :: [MarketHistory.t()]
-  def fetch_recent_history do
-    MarketHistoryCache.fetch()
+  @spec fetch_recent_history(boolean()) :: [MarketHistory.t()]
+  def fetch_recent_history(secondary_coin? \\ false) do
+    MarketHistoryCache.fetch(secondary_coin?)
   end
 
   @doc """
@@ -42,7 +42,8 @@ defmodule Explorer.Market do
         last_updated: nil,
         name: nil,
         symbol: nil,
-        volume_24h_usd: nil
+        volume_24h_usd: nil,
+        image_url: nil
       }
     else
       Token.null()
@@ -52,9 +53,9 @@ defmodule Explorer.Market do
   @doc """
   Get most recent exchange rate for the native coin from ETS or from DB.
   """
-  @spec get_coin_exchange_rate() :: Token.t() | nil
+  @spec get_coin_exchange_rate() :: Token.t()
   def get_coin_exchange_rate do
-    get_exchange_rate(Explorer.coin()) || get_native_coin_exchange_rate_from_db() || Token.null()
+    get_native_coin_exchange_rate_from_cache() || get_native_coin_exchange_rate_from_db() || Token.null()
   end
 
   @doc false
@@ -71,7 +72,7 @@ defmodule Explorer.Market do
 
     Repo.insert_all(MarketHistory, records_without_zeroes,
       on_conflict: market_history_on_conflict(),
-      conflict_target: [:date]
+      conflict_target: [:date, :secondary_coin]
     )
   end
 
@@ -138,8 +139,11 @@ defmodule Explorer.Market do
     )
   end
 
-  @spec get_exchange_rate(String.t()) :: Token.t() | nil
-  defp get_exchange_rate(symbol) do
-    ExchangeRates.lookup(symbol)
+  @spec get_native_coin_exchange_rate_from_cache :: Token.t() | nil
+  defp get_native_coin_exchange_rate_from_cache do
+    case ExchangeRates.list() do
+      [native_coin] -> native_coin
+      _ -> nil
+    end
   end
 end

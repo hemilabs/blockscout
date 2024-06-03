@@ -4,8 +4,10 @@ defmodule BlockScoutWeb.API.V2.MainPageController do
   alias Explorer.{Chain, PagingOptions}
   alias BlockScoutWeb.API.V2.{BlockView, OptimismView, TransactionView}
   alias Explorer.{Chain, Repo}
+  alias Explorer.Chain.Optimism.Deposit
 
   import BlockScoutWeb.Account.AuthController, only: [current_user: 1]
+  import Explorer.MicroserviceInterfaces.BENS, only: [maybe_preload_ens: 1]
 
   @transactions_options [
     necessity_by_association: %{
@@ -32,12 +34,12 @@ defmodule BlockScoutWeb.API.V2.MainPageController do
     conn
     |> put_status(200)
     |> put_view(BlockView)
-    |> render(:blocks, %{blocks: blocks})
+    |> render(:blocks, %{blocks: blocks |> maybe_preload_ens()})
   end
 
   def optimism_deposits(conn, _params) do
     recent_deposits =
-      Chain.list_optimism_deposits(
+      Deposit.list(
         paging_options: %PagingOptions{page_size: 6},
         api?: true
       )
@@ -54,7 +56,7 @@ defmodule BlockScoutWeb.API.V2.MainPageController do
     conn
     |> put_status(200)
     |> put_view(TransactionView)
-    |> render(:transactions, %{transactions: recent_transactions})
+    |> render(:transactions, %{transactions: recent_transactions |> maybe_preload_ens()})
   end
 
   def watchlist_transactions(conn, _params) do
@@ -64,7 +66,10 @@ defmodule BlockScoutWeb.API.V2.MainPageController do
       conn
       |> put_status(200)
       |> put_view(TransactionView)
-      |> render(:transactions_watchlist, %{transactions: transactions, watchlist_names: watchlist_names})
+      |> render(:transactions_watchlist, %{
+        transactions: transactions |> maybe_preload_ens(),
+        watchlist_names: watchlist_names
+      })
     end
   end
 

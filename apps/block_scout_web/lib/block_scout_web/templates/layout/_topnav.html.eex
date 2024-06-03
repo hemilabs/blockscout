@@ -12,7 +12,7 @@
         <span class="logo-text <%= unless logo(), do: "no-logo" %>"> <%= logo_text() %> </span>
       <% end %>
       <%= if Application.get_env(:block_scout_web, BlockScoutWeb.Chain)[:enable_testnet_label] do %>
-        <%= render BlockScoutWeb.FormView, "_tag.html", text: "", additional_classes: ["testnet-label", "ml-2"] %>
+        <%= render BlockScoutWeb.FormView, "_tag.html", text: Application.get_env(:block_scout_web, BlockScoutWeb.Chain)[:testnet_label_text], additional_classes: ["testnet-label", "ml-2"] %>
       <% end %>
     <% end %>
     <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="<%= gettext("Toggle navigation") %>">
@@ -83,7 +83,7 @@
               </span>
               <%= gettext("Tokens") %>
             </a>
-            <div class="dropdown-menu" aria-labeledby="navbarTransactionsDropdown"> 
+            <div class="dropdown-menu" aria-labeledby="navbarTransactionsDropdown">
               <%= link(
                     gettext("All"),
                     class: "dropdown-item #{tab_status("tokens", @conn.request_path)}",
@@ -105,7 +105,7 @@
               </span>
               <%= gettext("APIs") %>
             </a>
-            <div class="dropdown-menu" aria-labeledby="navbarTransactionsDropdown"> 
+            <div class="dropdown-menu" aria-labeledby="navbarTransactionsDropdown">
               <%= link(
                     gettext("GraphQL"),
                     class: "dropdown-item #{tab_status("graphiql", @conn.request_path)}",
@@ -160,24 +160,24 @@
             </span>
             <%= subnetwork_title() %>
           </a>
-          <div class="dropdown-menu dropdown-menu-right" aria-labelledby="navbarDropdown"> 
+          <div class="dropdown-menu dropdown-menu-right" aria-labelledby="navbarDropdown">
             <%= if Enum.count(main_nets) > 0 do %>
-              <a class="dropdown-item header division">Mainnets</a> 
-              <%= for %{url: url, title: title} <- main_nets do %>  
+              <a class="dropdown-item header division">Mainnets</a>
+              <%= for %{url: url, title: title} <- main_nets do %>
                 <a class="dropdown-item" href="<%= url %>"><%= title %></a>
               <% end %>
             <% end %>
             <%= if Enum.count(test_nets) > 0 do %>
-              <a class="dropdown-item header division">Testnets</a> 
-              <%= for %{url: url, title: title} <- test_nets do %> 
+              <a class="dropdown-item header division">Testnets</a>
+              <%= for %{url: url, title: title} <- test_nets do %>
                 <a class="dropdown-item" href="<%= url %>"><%= title %></a>
               <% end %>
             <% end %>
             <%= if Enum.count(other_nets) > 0 do %>
-              <a class="dropdown-item header division">Other Networks</a> 
-              <%= for %{url: url, title: title} <- other_nets do %>  
+              <a class="dropdown-item header division">Other Networks</a>
+              <%= for %{url: url, title: title} <- other_nets do %>
                 <a class="dropdown-item" href="<%= url %>"><%= title %></a>
-              <% end %> 
+              <% end %>
             <% end %>
           </div>
         </li>

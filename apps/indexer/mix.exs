@@ -14,15 +14,15 @@ defmodule Indexer.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       lockfile: "../../mix.lock",
       start_permanent: Mix.env() == :prod,
-      version: "5.3.1",
+      version: "6.3.0",
       xref: [
         exclude: [
-          Explorer.Chain.OptimismDeposit,
-          Explorer.Chain.OptimismFrameSequence,
-          Explorer.Chain.OptimismOutputRoot,
-          Explorer.Chain.OptimismTxnBatch,
-          Explorer.Chain.OptimismWithdrawal,
-          Explorer.Chain.OptimismWithdrawalEvent
+          Explorer.Chain.Optimism.Deposit,
+          Explorer.Chain.Optimism.FrameSequence,
+          Explorer.Chain.Optimism.OutputRoot,
+          Explorer.Chain.Optimism.TxnBatch,
+          Explorer.Chain.Optimism.Withdrawal,
+          Explorer.Chain.Optimism.WithdrawalEvent
         ]
       ]
     ]
@@ -65,7 +65,9 @@ defmodule Indexer.MixProject do
       # Tracing
       {:spandex, "~> 3.0"},
       # `:spandex` integration with Datadog
-      {:spandex_datadog, "~> 1.0"}
+      {:spandex_datadog, "~> 1.0"},
+      {:logger_json, "~> 5.1"},
+      {:varint, "~> 1.4"}
     ]
   end
 

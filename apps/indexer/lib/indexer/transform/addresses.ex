@@ -97,7 +97,9 @@ defmodule Indexer.Transform.Addresses do
       ],
       [
         %{from: :block_number, to: :fetched_coin_balance_block_number},
-        %{from: :to_address_hash, to: :hash},
+        %{from: :to_address_hash, to: :hash}
+      ],
+      [
         %{from: :execution_node_hash, to: :hash},
         %{from: :wrapped_to_address_hash, to: :hash}
       ]
@@ -106,6 +108,11 @@ defmodule Indexer.Transform.Addresses do
       [
         %{from: :block_number, to: :fetched_coin_balance_block_number},
         %{from: :address_hash, to: :hash}
+      ]
+    ],
+    shibarium_bridge_operations: [
+      [
+        %{from: :user, to: :hash}
       ]
     ],
     token_transfers: [
@@ -142,6 +149,11 @@ defmodule Indexer.Transform.Addresses do
       [
         %{from: :block_number, to: :fetched_coin_balance_block_number},
         %{from: :address_hash, to: :hash}
+      ]
+    ],
+    polygon_zkevm_bridge_operations: [
+      [
+        %{from: :l2_token_address, to: :hash}
       ]
     ]
   }
@@ -414,6 +426,11 @@ defmodule Indexer.Transform.Addresses do
               required(:block_number) => non_neg_integer()
             }
           ],
+          optional(:shibarium_bridge_operations) => [
+            %{
+              required(:user) => String.t()
+            }
+          ],
           optional(:token_transfers) => [
             %{
               required(:from_address_hash) => String.t(),
@@ -444,6 +461,11 @@ defmodule Indexer.Transform.Addresses do
             %{
               required(:address_hash) => String.t(),
               required(:block_number) => non_neg_integer()
+            }
+          ],
+          optional(:polygon_zkevm_bridge_operations) => [
+            %{
+              optional(:l2_token_address) => String.t()
             }
           ]
         }) :: [params]
@@ -486,7 +508,7 @@ defmodule Indexer.Transform.Addresses do
   end
 
   defp find_tx_action_addresses(block_number, value, accumulator) when is_binary(value) do
-    if Helper.is_address_correct?(value) do
+    if Helper.address_correct?(value) do
       [%{:fetched_coin_balance_block_number => block_number, :hash => value} | accumulator]
     else
       accumulator
