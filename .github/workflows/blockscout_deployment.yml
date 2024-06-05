@@ -2,9 +2,6 @@ name: Blockscout Explorer Deployment
 
 on: 
     workflow_dispatch:
-    push:
-        branches:
-            - production-optimism-stg # Hemi default branch
 
 jobs:
     blockscout_build:
@@ -21,13 +18,13 @@ jobs:
                   key: ${{ secrets.SSH_KEY }}
                   port: ${{ secrets.SSH_PORT }}
                   script: |
+                    cd ~/blockscout/docker-compose
+                    docker compose down --remove-orphans
                     if [ -d ~/blockscout ]; then
                         TIMESTAMP=$(date +%Y%m%d%H%M%S)
-                        tar -czvf ~/blockscout_$TIMESTAMP.tar.gz ~/blockscout
+                        sudo tar -czvf ~/backup/blockscout_$TIMESTAMP.tar.gz ~/blockscout
                     fi
                     cd ~/blockscout
                     git pull
                     cd ~/blockscout/docker-compose
                     docker compose up -d
-
-
