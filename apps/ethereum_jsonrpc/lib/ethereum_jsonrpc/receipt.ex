@@ -380,6 +380,12 @@ defmodule EthereumJSONRPC.Receipt do
     :ignore
   end
 
+  # Hemi specific transaction receipt fields shall be ignored to prevent the
+  # indexer to break. These are not used so ignoring seems right.
+  defp entry_to_elixir({key, _}) when key in ~w(popPayoutNonce) do
+    :ignore
+  end
+
   defp entry_to_elixir({key, value}) do
     {:error, {:unknown_key, %{key: key, value: value}}}
   end
