@@ -39,5 +39,19 @@ Ecto.Adapters.SQL.Sandbox.mode(Explorer.Repo.Filecoin, :manual)
 Absinthe.Test.prime(BlockScoutWeb.Schema)
 
 Mox.defmock(EthereumJSONRPC.Mox, for: EthereumJSONRPC.Transport)
+# require Explorer.MoxSetup
+# Explorer.MoxSetup.setup_mocks()
+
+IO.puts("1 ************************************************************* setup_mocks")
+
+# Mock the calls to json_rpc/2 expected during the tests
+Mox.stub(
+  EthereumJSONRPC.Mox,
+  :json_rpc,
+  fn %{method: "optimism_btcFinalityByBlockHash"}, _ ->
+    IO.puts("2 ************************************************************* call!")
+    {:ok, %{btc_finality: -9}}
+  end
+)
 
 Mox.defmock(BlockScoutWeb.TestCaptchaHelper, for: BlockScoutWeb.CaptchaHelper)
