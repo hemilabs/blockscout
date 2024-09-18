@@ -1,0 +1,30 @@
+name: Mainnet Blockscout Explorer Deployment
+
+on: 
+    workflow_dispatch:
+
+jobs:
+    blockscout_build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v3
+
+            - name: Deploy via docker-compose and ssh
+              uses: appleboy/ssh-action@master
+              with:
+                  host: ${{ secrets.MAIN_SSH_HOST }}
+                  username: ${{ secrets.MAIN_SSH_USER }}
+                  key: ${{ secrets.MAIN_SSH_KEY }}
+                  port: ${{ secrets.MAIN_SSH_PORT }}
+                  script: |
+                    cd ~/blockscout/docker-compose
+                    docker compose down --remove-orphans
+                    if [ -d ~/blockscout ]; then
+                        TIMESTAMP=$(date +%Y%m%d%H%M%S)
+                        sudo tar -czvf ~/backup/blockscout_$TIMESTAMP.tar.gz ~/blockscout
+                    fi
+                    cd ~/blockscout
+                    git pull
+                    cd ~/blockscout/docker-compose
+                    docker compose up -d

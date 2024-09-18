@@ -1,4 +1,4 @@
-name: Blockscout Explorer Deployment
+name: Testnet Blockscout Explorer Deployment
 
 on: 
     workflow_dispatch:
