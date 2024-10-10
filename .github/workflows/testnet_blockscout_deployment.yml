@@ -13,10 +13,10 @@ jobs:
             - name: Deploy via docker-compose and ssh
               uses: appleboy/ssh-action@master
               with:
-                  host: ${{ secrets.SSH_HOST }}
-                  username: ${{ secrets.SSH_USER }}
-                  key: ${{ secrets.SSH_KEY }}
-                  port: ${{ secrets.SSH_PORT }}
+                  host: ${{ secrets.TESTNET_SSH_HOST }}
+                  username: ${{ secrets.TESTNET_SSH_USER }}
+                  key: ${{ secrets.TESTNET_SSH_KEY }}
+                  port: ${{ secrets.TESTNET_SSH_PORT }}
                   script: |
                     cd ~/blockscout/docker-compose
                     docker compose down --remove-orphans
