@@ -2473,7 +2473,7 @@
 - [#3667](https://github.com/blockscout/blockscout/pull/3667) - Store bridged token price in the DB
 - [#3662](https://github.com/blockscout/blockscout/pull/3662) - Order bridged tokens in descending order by tokens holder for Omni bridge cap calculation
 - [#3659](https://github.com/blockscout/blockscout/pull/3659) - Staking Dapp new buttons: swap, bridge
-- [#3645](https://github.com/blockscout/blockscout/pull/3645) - Change Twitter handle
+- [#3645](https://github.com/blockscout/blockscout/pull/3645) - Change X handle
 - [#3644](https://github.com/blockscout/blockscout/pull/3644) - Correct exchange rate for SURF.finance token
 - [#3618](https://github.com/blockscout/blockscout/pull/3618) - Contracts verification up to 10 libraries
 - [#3616](https://github.com/blockscout/blockscout/pull/3616) - POSDAO refactoring: use zero address instead of staker address for certain cases
@@ -3502,7 +3502,7 @@ Reverting of synchronous block counter, implemented in #1848
 - [#1804](https://github.com/blockscout/blockscout/pull/1804) - (Chore) Divide chains by Mainnet/Testnet in menu
 - [#1783](https://github.com/blockscout/blockscout/pull/1783) - Update README with the chains that use Blockscout
 - [#1780](https://github.com/blockscout/blockscout/pull/1780) - Update link to the Github repo in the footer
-- [#1757](https://github.com/blockscout/blockscout/pull/1757) - Change twitter acc link to official Blockscout acc twitter
+- [#1757](https://github.com/blockscout/blockscout/pull/1757) - Change X acc link to official Blockscout acc X
 - [#1749](https://github.com/blockscout/blockscout/pull/1749) - Replace the link in the footer with the official POA announcements tg channel link
 - [#1718](https://github.com/blockscout/blockscout/pull/1718) - Flatten indexer module hierarchy and supervisor tree
 - [#1753](https://github.com/blockscout/blockscout/pull/1753) - Add a check mark to decompiled contract tab
