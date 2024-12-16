@@ -8,8 +8,11 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
   alias Ecto.Multi
   alias Explorer.Chain.Import.Runner.{Blocks, Transactions}
   alias Explorer.Chain.{Address, Block, Transaction, PendingBlockOperation}
+  alias Explorer.Chain.Celo.PendingEpochBlockOperation
   alias Explorer.{Chain, Repo}
   alias Explorer.Utility.MissingBlockRange
+
+  alias Explorer.Chain.Celo.Helper, as: CeloHelper
 
   describe "run/1" do
     setup do
@@ -83,6 +86,34 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
              "Tuple was written even though it is not distinct"
     end
 
+    test "coin balances are deleted and new balances are derived if some blocks lost consensus",
+         %{consensus_block: %{number: block_number} = block, options: options} do
+      %{hash: address_hash} = address = insert(:address)
+
+      prev_block_number = block_number - 1
+
+      insert(:address_coin_balance, address: address, block_number: block_number)
+      %{value: prev_value} = insert(:address_coin_balance, address: address, block_number: prev_block_number)
+
+      assert count(Address.CoinBalance) == 2
+
+      insert(:block, number: block_number, consensus: true)
+
+      assert {:ok,
+              %{
+                delete_address_coin_balances: [^address_hash],
+                derive_address_fetched_coin_balances: [
+                  %{
+                    hash: ^address_hash,
+                    fetched_coin_balance: ^prev_value,
+                    fetched_coin_balance_block_number: ^prev_block_number
+                  }
+                ]
+              }} = run_block_consensus_change(block, true, options)
+
+      assert %{value: ^prev_value, block_number: ^prev_block_number} = Repo.one(Address.CoinBalance)
+    end
+
     test "delete_address_current_token_balances deletes rows with matching block number when consensus is true",
          %{consensus_block: %{number: block_number} = block, options: options} do
       %Address.CurrentTokenBalance{address_hash: address_hash, token_contract_address_hash: token_contract_address_hash} =
@@ -99,7 +130,7 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
                 ]
               }} = run_block_consensus_change(block, true, options)
 
-      assert %{value: nil} = Repo.one(Address.CurrentTokenBalance)
+      assert count(Address.CurrentTokenBalance) == 0
     end
 
     test "delete_address_current_token_balances does not delete rows with matching block number when consensus is false",
@@ -116,6 +147,100 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
               }} = run_block_consensus_change(block, false, options)
 
       assert count(Address.CurrentTokenBalance) == count
+    end
+
+    test "derive_address_current_token_balances inserts rows if there is an address_token_balance left for the rows deleted by delete_address_current_token_balances",
+         %{consensus_block: %{number: block_number} = block, options: options} do
+      token = insert(:token)
+      token_contract_address_hash = token.contract_address_hash
+
+      %Address{hash: address_hash} =
+        insert_address_with_token_balances(%{
+          previous: %{value: 1},
+          current: %{block_number: block_number, value: 2},
+          token_contract_address_hash: token_contract_address_hash
+        })
+
+      # Token must exist with non-`nil` `holder_count` for `blocks_update_token_holder_counts` to update
+      update_holder_count!(token_contract_address_hash, 1)
+
+      assert count(Address.TokenBalance) == 2
+      assert count(Address.CurrentTokenBalance) == 1
+
+      previous_block_number = block_number - 1
+
+      insert(:block, number: block_number, consensus: true)
+
+      assert {:ok,
+              %{
+                delete_address_current_token_balances: [
+                  %{
+                    address_hash: ^address_hash,
+                    token_contract_address_hash: ^token_contract_address_hash
+                  }
+                ],
+                delete_address_token_balances: [
+                  %{
+                    address_hash: ^address_hash,
+                    token_contract_address_hash: ^token_contract_address_hash,
+                    block_number: ^block_number
+                  }
+                ],
+                derive_address_current_token_balances: [
+                  %{
+                    address_hash: ^address_hash,
+                    token_contract_address_hash: ^token_contract_address_hash,
+                    block_number: ^previous_block_number
+                  }
+                ],
+                # no updates because it both deletes and derives a holder
+                blocks_update_token_holder_counts: []
+              }} = run_block_consensus_change(block, true, options)
+
+      assert count(Address.TokenBalance) == 1
+      assert count(Address.CurrentTokenBalance) == 1
+
+      previous_value = Decimal.new(1)
+
+      assert %Address.CurrentTokenBalance{block_number: ^previous_block_number, value: ^previous_value} =
+               Repo.get_by(Address.CurrentTokenBalance,
+                 address_hash: address_hash,
+                 token_contract_address_hash: token_contract_address_hash
+               )
+    end
+
+    test "a non-holder reverting to a holder increases the holder_count",
+         %{consensus_block: %{hash: block_hash, miner_hash: miner_hash, number: block_number}, options: options} do
+      token = insert(:token)
+      token_contract_address_hash = token.contract_address_hash
+
+      non_holder_reverts_to_holder(%{
+        current: %{block_number: block_number},
+        token_contract_address_hash: token_contract_address_hash
+      })
+
+      # Token must exist with non-`nil` `holder_count` for `blocks_update_token_holder_counts` to update
+      update_holder_count!(token_contract_address_hash, 0)
+
+      insert(:block, number: block_number, consensus: true)
+
+      block_params = params_for(:block, hash: block_hash, miner_hash: miner_hash, number: block_number, consensus: true)
+
+      %Ecto.Changeset{valid?: true, changes: block_changes} = Block.changeset(%Block{}, block_params)
+      changes_list = [block_changes]
+
+      assert {:ok,
+              %{
+                blocks_update_token_holder_counts: [
+                  %{
+                    contract_address_hash: ^token_contract_address_hash,
+                    holder_count: 1
+                  }
+                ]
+              }} =
+               Multi.new()
+               |> Blocks.run(changes_list, options)
+               |> Repo.transaction()
     end
 
     test "a holder reverting to a non-holder decreases the holder_count",
@@ -294,6 +419,60 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
       assert %{block_number: ^number, block_hash: ^hash} = Repo.one(PendingBlockOperation)
     end
 
+    if Application.compile_env(:explorer, :chain_type) == :celo do
+      test "inserts pending_epoch_block_operations only for epoch blocks",
+           %{consensus_block: %{miner_hash: miner_hash}, options: options} do
+        epoch_block_number = CeloHelper.blocks_per_epoch()
+
+        %{hash: hash} =
+          epoch_block_params =
+          params_for(
+            :block,
+            miner_hash: miner_hash,
+            consensus: true,
+            number: epoch_block_number
+          )
+
+        non_epoch_block_params =
+          params_for(
+            :block,
+            miner_hash: miner_hash,
+            consensus: true,
+            number: epoch_block_number + 1
+          )
+
+        insert_block(epoch_block_params, options)
+        insert_block(non_epoch_block_params, options)
+
+        assert %{block_hash: ^hash} = Repo.one(PendingEpochBlockOperation)
+      end
+
+      test "inserts pending_epoch_block_operations only for consensus epoch blocks",
+           %{consensus_block: %{miner_hash: miner_hash}, options: options} do
+        %{hash: hash} =
+          first_epoch_block_params =
+          params_for(
+            :block,
+            miner_hash: miner_hash,
+            consensus: true,
+            number: CeloHelper.blocks_per_epoch()
+          )
+
+        second_epoch_block_params =
+          params_for(
+            :block,
+            miner_hash: miner_hash,
+            consensus: false,
+            number: CeloHelper.blocks_per_epoch() * 2
+          )
+
+        insert_block(first_epoch_block_params, options)
+        insert_block(second_epoch_block_params, options)
+
+        assert %{block_hash: ^hash} = Repo.one(PendingEpochBlockOperation)
+      end
+    end
+
     test "change instance owner if was token transfer in older blocks",
          %{consensus_block: %{hash: block_hash, miner_hash: miner_hash, number: block_number}, options: options} do
       block_number = block_number + 2
@@ -352,7 +531,7 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
       consensus_block_2 = insert(:block, %{hash: hash_2, number: block_number - 2})
 
       for _ <- 0..10 do
-        tx =
+        transaction =
           :transaction
           |> insert()
           |> with_block(consensus_block_2)
@@ -360,7 +539,7 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
         insert(:token_transfer,
           token_ids: [id],
           token_type: "ERC-721",
-          transaction: tx,
+          transaction: transaction,
           token_contract_address: tt.token_contract_address,
           block_number: consensus_block_2.number,
           block: consensus_block_2

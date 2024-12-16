@@ -13,7 +13,7 @@ defmodule BlockScoutWeb.AddressValidationController do
 
   alias BlockScoutWeb.{AccessHelper, BlockView, Controller}
   alias Explorer.{Chain, Market}
-  alias Indexer.Fetcher.CoinBalanceOnDemand
+  alias Indexer.Fetcher.OnDemand.CoinBalance, as: CoinBalanceOnDemand
   alias Phoenix.View
 
   def index(conn, %{"address_id" => address_hash_string, "type" => "JSON"} = params) do
@@ -91,9 +91,6 @@ defmodule BlockScoutWeb.AddressValidationController do
 
       :error ->
         unprocessable_entity(conn)
-
-      {:error, :not_found} ->
-        not_found(conn)
     end
   end
 end

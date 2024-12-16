@@ -66,13 +66,14 @@ defmodule Indexer.Fetcher.PolygonEdge do
          {:start_block_l1_valid, true} <-
            {:start_block_l1_valid, start_block_l1 <= last_l1_block_number || last_l1_block_number == 0},
          json_rpc_named_arguments = json_rpc_named_arguments(polygon_edge_l1_rpc),
-         {:ok, last_l1_tx} <-
+         {:ok, last_l1_transaction} <-
            Helper.get_transaction_by_hash(
              last_l1_transaction_hash,
              json_rpc_named_arguments,
              Helper.infinite_retries_number()
            ),
-         {:l1_tx_not_found, false} <- {:l1_tx_not_found, !is_nil(last_l1_transaction_hash) && is_nil(last_l1_tx)},
+         {:l1_transaction_not_found, false} <-
+           {:l1_transaction_not_found, !is_nil(last_l1_transaction_hash) && is_nil(last_l1_transaction)},
          {:ok, block_check_interval, last_safe_block} <-
            Helper.get_block_check_interval(json_rpc_named_arguments) do
       start_block = max(start_block_l1, last_l1_block_number)
@@ -112,7 +113,7 @@ defmodule Indexer.Fetcher.PolygonEdge do
 
         :ignore
 
-      {:l1_tx_not_found, true} ->
+      {:l1_transaction_not_found, true} ->
         Logger.error(
           "Cannot find last L1 transaction from RPC by its hash. Probably, there was a reorg on L1 chain. Please, check #{table_name} table."
         )
@@ -147,13 +148,14 @@ defmodule Indexer.Fetcher.PolygonEdge do
          {:start_block_l2_valid, true} <-
            {:start_block_l2_valid,
             (start_block_l2 <= last_l2_block_number || last_l2_block_number == 0) && start_block_l2 <= safe_block},
-         {:ok, last_l2_tx} <-
+         {:ok, last_l2_transaction} <-
            Helper.get_transaction_by_hash(
              last_l2_transaction_hash,
              json_rpc_named_arguments,
              Helper.infinite_retries_number()
            ),
-         {:l2_tx_not_found, false} <- {:l2_tx_not_found, !is_nil(last_l2_transaction_hash) && is_nil(last_l2_tx)} do
+         {:l2_transaction_not_found, false} <-
+           {:l2_transaction_not_found, !is_nil(last_l2_transaction_hash) && is_nil(last_l2_transaction)} do
       Process.send(pid, :continue, [])
 
       {:ok,
@@ -184,7 +186,7 @@ defmodule Indexer.Fetcher.PolygonEdge do
 
         :ignore
 
-      {:l2_tx_not_found, true} ->
+      {:l2_transaction_not_found, true} ->
         Logger.error(
           "Cannot find last L2 transaction from RPC by its hash. Probably, there was a reorg on L2 chain. Please, check #{table_name} table."
         )
@@ -339,29 +341,31 @@ defmodule Indexer.Fetcher.PolygonEdge do
     end)
   end
 
-  @spec fill_block_range(integer(), integer(), {module(), module()}, binary(), list()) :: integer()
+  @spec fill_block_range(integer(), integer(), {module(), module()}, binary(), list()) :: any()
   def fill_block_range(start_block, end_block, {module, table}, contract_address, json_rpc_named_arguments) do
-    fill_block_range(start_block, end_block, module, contract_address, json_rpc_named_arguments, true)
+    if start_block <= end_block do
+      fill_block_range(start_block, end_block, module, contract_address, json_rpc_named_arguments, true)
 
-    fill_msg_id_gaps(
-      start_block,
-      table,
-      module,
-      contract_address,
-      json_rpc_named_arguments,
-      false
-    )
+      fill_msg_id_gaps(
+        start_block,
+        table,
+        module,
+        contract_address,
+        json_rpc_named_arguments,
+        false
+      )
 
-    {last_l2_block_number, _} = get_last_l2_item(table)
+      {last_l2_block_number, _} = get_last_l2_item(table)
 
-    fill_block_range(
-      max(start_block, last_l2_block_number),
-      end_block,
-      module,
-      contract_address,
-      json_rpc_named_arguments,
-      false
-    )
+      fill_block_range(
+        max(start_block, last_l2_block_number),
+        end_block,
+        module,
+        contract_address,
+        json_rpc_named_arguments,
+        false
+      )
+    end
   end
 
   @spec fill_msg_id_gaps(integer(), module(), module(), binary(), list(), boolean()) :: no_return()
@@ -514,6 +518,7 @@ defmodule Indexer.Fetcher.PolygonEdge do
           non_neg_integer()
         ) :: {:ok, list()} | {:error, term()}
   def get_logs(from_block, to_block, address, topic0, json_rpc_named_arguments, retries) do
+    # TODO: use the function from the Indexer.Helper module
     processed_from_block = if is_integer(from_block), do: integer_to_quantity(from_block), else: from_block
     processed_to_block = if is_integer(to_block), do: integer_to_quantity(to_block), else: to_block
 
@@ -585,7 +590,7 @@ defmodule Indexer.Fetcher.PolygonEdge do
   defp import_events(events, calling_module) do
     # here we explicitly check CHAIN_TYPE as Dialyzer throws an error otherwise
     {import_data, event_name} =
-      case Application.get_env(:explorer, :chain_type) == "polygon_edge" && calling_module do
+      case Application.get_env(:explorer, :chain_type) == :polygon_edge && calling_module do
         Deposit ->
           {%{polygon_edge_deposits: %{params: events}, timeout: :infinity}, "StateSynced"}
 
@@ -604,5 +609,13 @@ defmodule Indexer.Fetcher.PolygonEdge do
   @spec repeated_request(list(), any(), list(), non_neg_integer()) :: {:ok, any()} | {:error, atom()}
   def repeated_request(req, error_message, json_rpc_named_arguments, retries) do
     Helper.repeated_call(&json_rpc/2, [req, json_rpc_named_arguments], error_message, retries)
+  end
+
+  @doc """
+    Returns L1 RPC URL for a Polygon Edge module.
+  """
+  @spec l1_rpc_url() :: binary()
+  def l1_rpc_url do
+    Application.get_all_env(:indexer)[__MODULE__][:polygon_edge_l1_rpc]
   end
 end

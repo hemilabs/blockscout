@@ -9,31 +9,25 @@ on:
 env:
   OTP_VERSION: ${{ vars.OTP_VERSION }}
   ELIXIR_VERSION: ${{ vars.ELIXIR_VERSION }}
-  RELEASE_VERSION: ${{ vars.RELEASE_VERSION }}
+  RELEASE_VERSION: 6.9.0
 
 jobs:
   push_to_registry:
     name: Push Docker image to Docker Hub
     runs-on: ubuntu-latest
-    outputs:
-      release-version: ${{ steps.output-step.outputs.release-version }}
-      short-sha: ${{ steps.output-step.outputs.short-sha }}
     steps:
       - uses: actions/checkout@v4
       - name: Setup repo
-        uses: ./.github/actions/setup-repo-and-short-sha
+        uses: ./.github/actions/setup-repo
+        id: setup
         with:
           docker-username: ${{ secrets.DOCKERHUB_USERNAME }}
           docker-password: ${{ secrets.DOCKERHUB_TOKEN }}
+          docker-remote-multi-platform: true
+          docker-arm-host: ${{ secrets.ARM_RUNNER_HOSTNAME }}
+          docker-arm-host-key: ${{ secrets.ARM_RUNNER_KEY }}
 
-
-      - name: Add outputs
-        run: |
-          echo "::set-output name=release-version::${{ env.NEXT_RELEASE_VERSION }}"
-          echo "::set-output name=short-sha::${{ env.SHORT_SHA }}"
-        id: output-step
-
-      - name: Build and push Docker image
+      - name: Build and push Docker image (indexer + API)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -42,19 +36,76 @@ jobs:
           cache-from: type=registry,ref=hemilabs/blockscout:buildcache
           cache-to: type=registry,ref=hemilabs/blockscout:buildcache,mode=max
           tags: hemilabs/blockscout:master, hemilabs/blockscout:${{ env.RELEASE_VERSION }}.commit.${{ env.SHORT_SHA }}
+          labels: ${{ steps.setup.outputs.docker-labels }}
+          platforms: |
+            linux/amd64
+            linux/arm64/v8
           build-args: |
-            CACHE_EXCHANGE_RATES_PERIOD=
-            API_V1_READ_METHODS_DISABLED=false
             DISABLE_WEBAPP=false
+            API_V1_READ_METHODS_DISABLED=false
             API_V1_WRITE_METHODS_DISABLED=false
+            CACHE_EXCHANGE_RATES_PERIOD=
             CACHE_TOTAL_GAS_USAGE_COUNTER_ENABLED=
+            CACHE_ADDRESS_WITH_BALANCES_UPDATE_INTERVAL=
             ADMIN_PANEL_ENABLED=false
             DECODE_NOT_A_CONTRACT_CALLS=false
             MIXPANEL_URL=
             MIXPANEL_TOKEN=
             AMPLITUDE_URL=
             AMPLITUDE_API_KEY=
+            BLOCKSCOUT_VERSION=v${{ env.RELEASE_VERSION }}-beta.+commit.${{ env.SHORT_SHA }}
+            RELEASE_VERSION=${{ env.RELEASE_VERSION }}
+
+      - name: Build and push Docker image (indexer)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: blockscout/blockscout:${{ env.RELEASE_VERSION }}.commit.${{ env.SHORT_SHA }}-indexer
+          labels: ${{ steps.setup.outputs.docker-labels }}
+          platforms: |
+            linux/amd64
+            linux/arm64/v8
+          build-args: |
+            DISABLE_API=true
+            DISABLE_WEBAPP=true
+            CACHE_EXCHANGE_RATES_PERIOD=
+            CACHE_TOTAL_GAS_USAGE_COUNTER_ENABLED=
             CACHE_ADDRESS_WITH_BALANCES_UPDATE_INTERVAL=
+            ADMIN_PANEL_ENABLED=false
+            DECODE_NOT_A_CONTRACT_CALLS=false
+            MIXPANEL_URL=
+            MIXPANEL_TOKEN=
+            AMPLITUDE_URL=
+            AMPLITUDE_API_KEY=
+            BLOCKSCOUT_VERSION=v${{ env.RELEASE_VERSION }}-beta.+commit.${{ env.SHORT_SHA }}
+            RELEASE_VERSION=${{ env.RELEASE_VERSION }}
+            CHAIN_TYPE=optimism
+
+      - name: Build and push Docker image (API)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: blockscout/blockscout:${{ env.RELEASE_VERSION }}.commit.${{ env.SHORT_SHA }}-api
+          labels: ${{ steps.setup.outputs.docker-labels }}
+          platforms: |
+            linux/amd64
+            linux/arm64/v8
+          build-args: |
+            DISABLE_INDEXER=true
+            DISABLE_WEBAPP=true
+            CACHE_EXCHANGE_RATES_PERIOD=
+            CACHE_TOTAL_GAS_USAGE_COUNTER_ENABLED=
+            CACHE_ADDRESS_WITH_BALANCES_UPDATE_INTERVAL=
+            ADMIN_PANEL_ENABLED=false
+            DECODE_NOT_A_CONTRACT_CALLS=false
+            MIXPANEL_URL=
+            MIXPANEL_TOKEN=
+            AMPLITUDE_URL=
+            AMPLITUDE_API_KEY=
             BLOCKSCOUT_VERSION=v${{ env.RELEASE_VERSION }}-beta.+commit.${{ env.SHORT_SHA }}
             RELEASE_VERSION=${{ env.RELEASE_VERSION }}
             CHAIN_TYPE=optimism
@@ -67,6 +118,10 @@ jobs:
           push: true
           cache-from: type=registry,ref=hemilabs/blockscout:buildcache
           tags: hemilabs/blockscout:frontend-main
+          labels: ${{ steps.setup.outputs.docker-labels }}
+          platforms: |
+            linux/amd64
+            linux/arm64/v8
           build-args: |
             CACHE_EXCHANGE_RATES_PERIOD=
             API_V1_READ_METHODS_DISABLED=false

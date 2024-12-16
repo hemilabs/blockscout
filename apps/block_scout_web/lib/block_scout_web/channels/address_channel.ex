@@ -38,6 +38,33 @@ defmodule BlockScoutWeb.AddressChannel do
   @burn_address_hash burn_address_hash
   @current_token_balances_limit 50
 
+  case Application.compile_env(:explorer, :chain_type) do
+    :celo ->
+      @chain_type_transaction_associations [
+        :gas_token
+      ]
+
+    _ ->
+      @chain_type_transaction_associations []
+  end
+
+  @transaction_associations [
+                              from_address: [:scam_badge, :names, :smart_contract, :proxy_implementations],
+                              to_address: [
+                                :scam_badge,
+                                :names,
+                                :smart_contract,
+                                :proxy_implementations
+                              ],
+                              created_contract_address: [
+                                :scam_badge,
+                                :names,
+                                :smart_contract,
+                                :proxy_implementations
+                              ]
+                            ] ++
+                              @chain_type_transaction_associations
+
   def join("addresses:" <> address_hash, _params, socket) do
     {:ok, %{}, assign(socket, :address_hash, address_hash)}
   end
@@ -146,6 +173,7 @@ defmodule BlockScoutWeb.AddressChannel do
     {:noreply, socket}
   end
 
+  # TODO: fix or remove, "internal_transaction.json" clause does not exist
   def handle_out(
         "internal_transaction",
         %{address: _address, internal_transaction: internal_transaction},
@@ -330,7 +358,13 @@ defmodule BlockScoutWeb.AddressChannel do
         event
       )
       when is_list(transactions) do
-    transaction_json = TransactionViewAPI.render("transactions.json", %{transactions: transactions, conn: nil})
+    transaction_json =
+      TransactionViewAPI.render("transactions.json", %{
+        transactions:
+          transactions
+          |> Repo.preload(@transaction_associations),
+        conn: nil
+      })
 
     push(socket, event, %{transactions: transaction_json})
 
@@ -375,7 +409,17 @@ defmodule BlockScoutWeb.AddressChannel do
       )
       when is_list(token_transfers) do
     token_transfer_json =
-      TransactionViewAPI.render("token_transfers.json", %{token_transfers: token_transfers, conn: nil})
+      TransactionViewAPI.render("token_transfers.json", %{
+        token_transfers:
+          token_transfers
+          |> Repo.preload([
+            [
+              from_address: [:scam_badge, :names, :smart_contract, :proxy_implementations],
+              to_address: [:scam_badge, :names, :smart_contract, :proxy_implementations]
+            ]
+          ]),
+        conn: nil
+      })
 
     push(socket, event, %{token_transfers: token_transfer_json})
 

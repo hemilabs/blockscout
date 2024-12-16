@@ -17,14 +17,13 @@ defmodule Indexer.Fetcher.Optimism do
       request: 1
     ]
 
-  import Explorer.Helper, only: [parse_integer: 1]
-
   alias EthereumJSONRPC.Block.ByNumber
+  alias EthereumJSONRPC.Contract
   alias Indexer.Helper
 
   @fetcher_name :optimism
   @block_check_interval_range_size 100
-  @eth_get_logs_range_size 1000
+  @eth_get_logs_range_size 250
   @finite_retries_number 3
 
   def child_spec(start_link_arguments) do
@@ -57,7 +56,7 @@ defmodule Indexer.Fetcher.Optimism do
   """
   @spec get_block_check_interval(list()) :: {:ok, non_neg_integer(), non_neg_integer()} | {:error, any()}
   def get_block_check_interval(json_rpc_named_arguments) do
-    {last_safe_block, _} = get_safe_block(json_rpc_named_arguments)
+    {last_safe_block, _} = Helper.get_safe_block(json_rpc_named_arguments)
 
     first_block = max(last_safe_block - @block_check_interval_range_size, 1)
 
@@ -90,26 +89,6 @@ defmodule Indexer.Fetcher.Optimism do
       error_message,
       retries
     )
-  end
-
-  @doc """
-  Tries to get `safe` block number from the RPC node.
-  If it's not available, gets the `latest` one.
-  Returns a tuple of `{block_number, is_latest}`
-  where `is_latest` is true if the `safe` is not available.
-  """
-  @spec get_safe_block(list()) :: {non_neg_integer(), boolean()}
-  def get_safe_block(json_rpc_named_arguments) do
-    case get_block_number_by_tag("safe", json_rpc_named_arguments) do
-      {:ok, safe_block} ->
-        {safe_block, false}
-
-      {:error, :not_found} ->
-        {:ok, latest_block} =
-          get_block_number_by_tag("latest", json_rpc_named_arguments, Helper.infinite_retries_number())
-
-        {latest_block, true}
-    end
   end
 
   defp get_block_timestamp_by_number_inner(number, json_rpc_named_arguments) do
@@ -159,6 +138,7 @@ defmodule Indexer.Fetcher.Optimism do
           non_neg_integer()
         ) :: {:ok, list()} | {:error, term()}
   def get_logs(from_block, to_block, address, topic0, json_rpc_named_arguments, retries) do
+    # TODO: use the function from the Indexer.Helper module
     processed_from_block = if is_integer(from_block), do: integer_to_quantity(from_block), else: from_block
     processed_to_block = if is_integer(to_block), do: integer_to_quantity(to_block), else: to_block
 
@@ -226,7 +206,19 @@ defmodule Indexer.Fetcher.Optimism do
     ]
   end
 
-  def init_continue(env, contract_address, caller)
+  @doc """
+    Does initializations for `Indexer.Fetcher.Optimism.WithdrawalEvent` or `Indexer.Fetcher.Optimism.OutputRoot` module.
+    Contains common code used by both modules.
+
+    ## Parameters
+    - `output_oracle`: An address of L2OutputOracle contract on L1. Must be `nil` if the `caller` is not `OutputRoot` module.
+    - `caller`: The module that called this function.
+
+    ## Returns
+    - A map for the `handle_continue` handler of the calling module.
+  """
+  @spec init_continue(binary() | nil, module()) :: {:noreply, map()} | {:stop, :normal, %{}}
+  def init_continue(output_oracle, caller)
       when caller in [Indexer.Fetcher.Optimism.WithdrawalEvent, Indexer.Fetcher.Optimism.OutputRoot] do
     {contract_name, table_name, start_block_note} =
       if caller == Indexer.Fetcher.Optimism.WithdrawalEvent do
@@ -235,22 +227,34 @@ defmodule Indexer.Fetcher.Optimism do
         {"Output Oracle", "op_output_roots", "Output Roots"}
       end
 
-    with {:start_block_l1_undefined, false} <- {:start_block_l1_undefined, is_nil(env[:start_block_l1])},
+    optimism_env = Application.get_all_env(:indexer)[__MODULE__]
+    system_config = optimism_env[:optimism_l1_system_config]
+    optimism_l1_rpc = l1_rpc_url()
+
+    with {:system_config_valid, true} <- {:system_config_valid, Helper.address_correct?(system_config)},
          {:reorg_monitor_started, true} <-
            {:reorg_monitor_started, !is_nil(Process.whereis(Indexer.Fetcher.RollupL1ReorgMonitor))},
-         optimism_l1_rpc = Application.get_all_env(:indexer)[Indexer.Fetcher.Optimism][:optimism_l1_rpc],
          {:rpc_l1_undefined, false} <- {:rpc_l1_undefined, is_nil(optimism_l1_rpc)},
-         {:contract_is_valid, true} <- {:contract_is_valid, Helper.address_correct?(contract_address)},
-         start_block_l1 = parse_integer(env[:start_block_l1]),
-         false <- is_nil(start_block_l1),
+         json_rpc_named_arguments = json_rpc_named_arguments(optimism_l1_rpc),
+         {optimism_portal, start_block_l1} <- read_system_config(system_config, json_rpc_named_arguments),
+         {:contract_is_valid, true} <-
+           {:contract_is_valid,
+            caller == Indexer.Fetcher.Optimism.WithdrawalEvent or Helper.address_correct?(output_oracle)},
          true <- start_block_l1 > 0,
          {last_l1_block_number, last_l1_transaction_hash} <- caller.get_last_l1_item(),
          {:start_block_l1_valid, true} <-
            {:start_block_l1_valid, start_block_l1 <= last_l1_block_number || last_l1_block_number == 0},
-         json_rpc_named_arguments = json_rpc_named_arguments(optimism_l1_rpc),
-         {:ok, last_l1_tx} <- get_transaction_by_hash(last_l1_transaction_hash, json_rpc_named_arguments),
-         {:l1_tx_not_found, false} <- {:l1_tx_not_found, !is_nil(last_l1_transaction_hash) && is_nil(last_l1_tx)},
+         {:ok, last_l1_transaction} <- get_transaction_by_hash(last_l1_transaction_hash, json_rpc_named_arguments),
+         {:l1_transaction_not_found, false} <-
+           {:l1_transaction_not_found, !is_nil(last_l1_transaction_hash) && is_nil(last_l1_transaction)},
          {:ok, block_check_interval, last_safe_block} <- get_block_check_interval(json_rpc_named_arguments) do
+      contract_address =
+        if caller == Indexer.Fetcher.Optimism.WithdrawalEvent do
+          optimism_portal
+        else
+          output_oracle
+        end
+
       start_block = max(start_block_l1, last_l1_block_number)
 
       Process.send(self(), :continue, [])
@@ -261,19 +265,23 @@ defmodule Indexer.Fetcher.Optimism do
          block_check_interval: block_check_interval,
          start_block: start_block,
          end_block: last_safe_block,
-         json_rpc_named_arguments: json_rpc_named_arguments
+         json_rpc_named_arguments: json_rpc_named_arguments,
+         stop: false
        }}
     else
-      {:start_block_l1_undefined, true} ->
-        # the process shouldn't start if the start block is not defined
-        {:stop, :normal, %{}}
-
       {:reorg_monitor_started, false} ->
-        Logger.error("Cannot start this process as reorg monitor in Indexer.Fetcher.Optimism is not started.")
+        Logger.error(
+          "Cannot start this process as reorg monitor in Indexer.Fetcher.RollupL1ReorgMonitor is not started."
+        )
+
         {:stop, :normal, %{}}
 
       {:rpc_l1_undefined, true} ->
         Logger.error("L1 RPC URL is not defined.")
+        {:stop, :normal, %{}}
+
+      {:system_config_valid, false} ->
+        Logger.error("SystemConfig contract address is invalid or undefined.")
         {:stop, :normal, %{}}
 
       {:contract_is_valid, false} ->
@@ -291,11 +299,15 @@ defmodule Indexer.Fetcher.Optimism do
 
         {:stop, :normal, %{}}
 
-      {:l1_tx_not_found, true} ->
+      {:l1_transaction_not_found, true} ->
         Logger.error(
           "Cannot find last L1 transaction from RPC by its hash. Probably, there was a reorg on L1 chain. Please, check #{table_name} table."
         )
 
+        {:stop, :normal, %{}}
+
+      nil ->
+        Logger.error("Cannot read SystemConfig contract.")
         {:stop, :normal, %{}}
 
       _ ->
@@ -306,5 +318,66 @@ defmodule Indexer.Fetcher.Optimism do
 
   def repeated_request(req, error_message, json_rpc_named_arguments, retries) do
     Helper.repeated_call(&json_rpc/2, [req, json_rpc_named_arguments], error_message, retries)
+  end
+
+  @doc """
+    Reads some public getters of SystemConfig contract and returns retrieved values.
+    Gets `OptimismPortal` contract address from the `SystemConfig` contract and
+    the number of a start block (from which all Optimism fetchers should start).
+
+    ## Parameters
+    - `contract_address`: An address of SystemConfig contract.
+    - `json_rpc_named_arguments`: Configuration parameters for the JSON RPC connection.
+
+    ## Returns
+    - A tuple of OptimismPortal contract address and start block: {optimism_portal, start_block}.
+    - `nil` in case of error.
+  """
+  @spec read_system_config(binary(), list()) :: {binary(), non_neg_integer()} | nil
+  def read_system_config(contract_address, json_rpc_named_arguments) do
+    requests = [
+      # optimismPortal() public getter
+      Contract.eth_call_request("0x0a49cb03", contract_address, 0, nil, nil),
+      # startBlock() public getter
+      Contract.eth_call_request("0x48cd4cb1", contract_address, 1, nil, nil)
+    ]
+
+    error_message = &"Cannot call public getters of SystemConfig. Error: #{inspect(&1)}"
+
+    case Helper.repeated_call(
+           &json_rpc/2,
+           [requests, json_rpc_named_arguments],
+           error_message,
+           Helper.infinite_retries_number()
+         ) do
+      {:ok, responses} ->
+        "0x000000000000000000000000" <> optimism_portal = Enum.at(responses, 0).result
+        start_block = quantity_to_integer(Enum.at(responses, 1).result)
+        {"0x" <> optimism_portal, start_block}
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc """
+    Returns L1 RPC URL for an OP module.
+  """
+  @spec l1_rpc_url() :: binary() | nil
+  def l1_rpc_url do
+    Application.get_all_env(:indexer)[__MODULE__][:optimism_l1_rpc]
+  end
+
+  @doc """
+    Determines if `Indexer.Fetcher.RollupL1ReorgMonitor` module must be up
+    before an OP fetcher starts.
+
+    ## Returns
+    - `true` if the reorg monitor must be active, `false` otherwise.
+  """
+  @spec requires_l1_reorg_monitor?() :: boolean()
+  def requires_l1_reorg_monitor? do
+    optimism_config = Application.get_all_env(:indexer)[__MODULE__]
+    not is_nil(optimism_config[:optimism_l1_system_config])
   end
 end

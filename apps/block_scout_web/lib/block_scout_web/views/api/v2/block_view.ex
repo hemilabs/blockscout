@@ -36,6 +36,8 @@ defmodule BlockScoutWeb.API.V2.BlockView do
     %{
       "height" => block.number,
       "timestamp" => block.timestamp,
+      "transaction_count" => count_transactions(block),
+      # todo: keep next line for compatibility with frontend and remove when new frontend is bound to `transaction_count` property
       "tx_count" => count_transactions(block),
       "miner" => Helper.address_with_info(nil, block.miner, block.miner_hash, false),
       "size" => block.size,
@@ -57,6 +59,8 @@ defmodule BlockScoutWeb.API.V2.BlockView do
       "gas_used_percentage" => Block.gas_used_percentage(block),
       "burnt_fees_percentage" => burnt_fees_percentage(burnt_fees, transaction_fees),
       "type" => block |> BlockView.block_type() |> String.downcase(),
+      "transaction_fees" => transaction_fees,
+      # todo: keep next line for compatibility with frontend and remove when new frontend is bound to `transaction_fees` property
       "tx_fees" => transaction_fees,
       "withdrawals_count" => count_withdrawals(block)
     }
@@ -101,14 +105,14 @@ defmodule BlockScoutWeb.API.V2.BlockView do
 
   def burnt_fees_percentage(_, _), do: nil
 
-  def count_transactions(%Block{transactions: txs}) when is_list(txs), do: Enum.count(txs)
+  def count_transactions(%Block{transactions: transactions}) when is_list(transactions), do: Enum.count(transactions)
   def count_transactions(_), do: nil
 
   def count_withdrawals(%Block{withdrawals: withdrawals}) when is_list(withdrawals), do: Enum.count(withdrawals)
   def count_withdrawals(_), do: nil
 
   case Application.compile_env(:explorer, :chain_type) do
-    "rsk" ->
+    :rsk ->
       defp chain_type_fields(result, block, single_block?) do
         if single_block? do
           # credo:disable-for-next-line Credo.Check.Design.AliasUsage
@@ -118,7 +122,17 @@ defmodule BlockScoutWeb.API.V2.BlockView do
         end
       end
 
-    "zksync" ->
+    :optimism ->
+      defp chain_type_fields(result, block, single_block?) do
+        if single_block? do
+          # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+          BlockScoutWeb.API.V2.OptimismView.extend_block_json_response(result, block)
+        else
+          result
+        end
+      end
+
+    :zksync ->
       defp chain_type_fields(result, block, single_block?) do
         if single_block? do
           # credo:disable-for-next-line Credo.Check.Design.AliasUsage
@@ -128,10 +142,26 @@ defmodule BlockScoutWeb.API.V2.BlockView do
         end
       end
 
-    "ethereum" ->
+    :arbitrum ->
+      defp chain_type_fields(result, block, single_block?) do
+        if single_block? do
+          # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+          BlockScoutWeb.API.V2.ArbitrumView.extend_block_json_response(result, block)
+        else
+          result
+        end
+      end
+
+    :ethereum ->
       defp chain_type_fields(result, block, single_block?) do
         # credo:disable-for-next-line Credo.Check.Design.AliasUsage
         BlockScoutWeb.API.V2.EthereumView.extend_block_json_response(result, block, single_block?)
+      end
+
+    :celo ->
+      defp chain_type_fields(result, block, single_block?) do
+        # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+        BlockScoutWeb.API.V2.CeloView.extend_block_json_response(result, block, single_block?)
       end
 
     _ ->

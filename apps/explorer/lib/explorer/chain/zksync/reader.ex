@@ -157,10 +157,16 @@ defmodule Explorer.Chain.ZkSync.Reader do
       else
         paging_options = Keyword.get(options, :paging_options, Chain.default_paging_options())
 
-        base_query
-        |> Chain.join_associations(necessity_by_association)
-        |> page_batches(paging_options)
-        |> limit(^paging_options.page_size)
+        case paging_options do
+          %PagingOptions{key: {0}} ->
+            []
+
+          _ ->
+            base_query
+            |> Chain.join_associations(necessity_by_association)
+            |> page_batches(paging_options)
+            |> limit(^paging_options.page_size)
+        end
       end
 
     select_repo(options).all(query)
@@ -291,18 +297,18 @@ defmodule Explorer.Chain.ZkSync.Reader do
     Reads a list of L1 transactions by their hashes from the `zksync_lifecycle_l1_transactions` table.
 
     ## Parameters
-    - `l1_tx_hashes`: A list of hashes to retrieve L1 transactions for.
+    - `l1_transaction_hashes`: A list of hashes to retrieve L1 transactions for.
 
     ## Returns
     - A list of `Explorer.Chain.ZkSync.LifecycleTransaction` corresponding to the hashes from the input list. The output list may be smaller than the input list.
   """
   @spec lifecycle_transactions(maybe_improper_list(binary(), [])) :: [Explorer.Chain.ZkSync.LifecycleTransaction]
-  def lifecycle_transactions(l1_tx_hashes) do
+  def lifecycle_transactions(l1_transaction_hashes) do
     query =
       from(
         lt in LifecycleTransaction,
         select: {lt.hash, lt.id},
-        where: lt.hash in ^l1_tx_hashes
+        where: lt.hash in ^l1_transaction_hashes
       )
 
     Repo.all(query, timeout: :infinity)

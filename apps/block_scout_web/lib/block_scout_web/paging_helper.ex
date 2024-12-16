@@ -12,7 +12,7 @@ defmodule BlockScoutWeb.PagingHelper do
   @allowed_filter_labels ["validated", "pending"]
 
   case Application.compile_env(:explorer, :chain_type) do
-    "ethereum" ->
+    :ethereum ->
       @allowed_type_labels [
         "coin_transfer",
         "contract_call",
@@ -40,8 +40,8 @@ defmodule BlockScoutWeb.PagingHelper do
   def allowed_stability_validators_states, do: @allowed_stability_validators_states
 
   def paging_options(%{"block_number" => block_number_string, "index" => index_string}, [:validated | _]) do
-    with {block_number, ""} <- Integer.parse(block_number_string),
-         {index, ""} <- Integer.parse(index_string) do
+    with {:ok, block_number} <- Helper.safe_parse_non_negative_integer(block_number_string),
+         {:ok, index} <- Helper.safe_parse_non_negative_integer(index_string) do
       [paging_options: %{@default_paging_options | key: {block_number, index}}]
     else
       _ ->
@@ -52,7 +52,7 @@ defmodule BlockScoutWeb.PagingHelper do
   def paging_options(%{"inserted_at" => inserted_at_string, "hash" => hash_string}, [:pending | _]) do
     with {:ok, inserted_at, _} <- DateTime.from_iso8601(inserted_at_string),
          {:ok, hash} <- string_to_transaction_hash(hash_string) do
-      [paging_options: %{@default_paging_options | key: {inserted_at, hash}, is_pending_tx: true}]
+      [paging_options: %{@default_paging_options | key: {inserted_at, hash}, is_pending_transaction: true}]
     else
       _ ->
         [paging_options: @default_paging_options]
@@ -158,7 +158,7 @@ defmodule BlockScoutWeb.PagingHelper do
         [
           necessity_by_association: %{
             :transactions => :optional,
-            [miner: :names] => :optional,
+            [miner: [:names, :smart_contract, :proxy_implementations]] => :optional,
             :nephews => :required,
             :rewards => :optional
           },
@@ -169,7 +169,7 @@ defmodule BlockScoutWeb.PagingHelper do
         [
           necessity_by_association: %{
             :transactions => :optional,
-            [miner: :names] => :optional,
+            [miner: [:names, :smart_contract, :proxy_implementations]] => :optional,
             :rewards => :optional
           },
           block_type: "Reorg"
@@ -184,12 +184,23 @@ defmodule BlockScoutWeb.PagingHelper do
     do: [
       necessity_by_association: %{
         :transactions => :optional,
-        [miner: :names] => :optional,
+        [miner: [:names, :smart_contract, :proxy_implementations]] => :optional,
         :rewards => :optional
       },
       block_type: "Block"
     ]
 
+  @doc """
+    Removes redundant parameters from the parameter map used when calling
+    `next_page_params` function.
+
+    ## Parameters
+    - `params`: A map of parameter entries.
+
+    ## Returns
+    - A modified map without redundant parameters needed for `next_page_params` function.
+  """
+  @spec delete_parameters_from_next_page_params(map()) :: map() | nil
   def delete_parameters_from_next_page_params(params) when is_map(params) do
     params
     |> Map.drop([
@@ -202,7 +213,10 @@ defmodule BlockScoutWeb.PagingHelper do
       "q",
       "sort",
       "order",
-      "state_filter"
+      "state_filter",
+      "l2_block_range_start",
+      "l2_block_range_end",
+      "batch_number"
     ])
   end
 
@@ -260,8 +274,8 @@ defmodule BlockScoutWeb.PagingHelper do
 
   defp do_smart_contracts_sorting("balance", "asc"), do: [{:asc_nulls_first, :fetched_coin_balance, :address}]
   defp do_smart_contracts_sorting("balance", "desc"), do: [{:desc_nulls_last, :fetched_coin_balance, :address}]
-  defp do_smart_contracts_sorting("txs_count", "asc"), do: [{:asc_nulls_first, :transactions_count, :address}]
-  defp do_smart_contracts_sorting("txs_count", "desc"), do: [{:desc_nulls_last, :transactions_count, :address}]
+  defp do_smart_contracts_sorting("transactions_count", "asc"), do: [{:asc_nulls_first, :transactions_count, :address}]
+  defp do_smart_contracts_sorting("transactions_count", "desc"), do: [{:desc_nulls_last, :transactions_count, :address}]
   defp do_smart_contracts_sorting(_, _), do: []
 
   @spec address_transactions_sorting(%{required(String.t()) => String.t()}) :: [
@@ -273,6 +287,8 @@ defmodule BlockScoutWeb.PagingHelper do
 
   def address_transactions_sorting(_), do: []
 
+  defp do_address_transaction_sorting("block_number", "asc"), do: [asc: :block_number, asc: :index]
+  defp do_address_transaction_sorting("block_number", "desc"), do: [desc: :block_number, desc: :index]
   defp do_address_transaction_sorting("value", "asc"), do: [asc: :value]
   defp do_address_transaction_sorting("value", "desc"), do: [desc: :value]
   defp do_address_transaction_sorting("fee", "asc"), do: [{:dynamic, :fee, :asc_nulls_first, Transaction.dynamic_fee()}]
@@ -303,4 +319,35 @@ defmodule BlockScoutWeb.PagingHelper do
     do: [{:dynamic, :blocks_validated, :desc_nulls_last, ValidatorStability.dynamic_validated_blocks()}]
 
   defp do_validators_stability_sorting(_, _), do: []
+
+  @spec mud_records_sorting(%{required(String.t()) => String.t()}) :: [
+          {:sorting, SortingHelper.sorting_params()}
+        ]
+  def mud_records_sorting(%{"sort" => sort_field, "order" => order}) do
+    [sorting: do_mud_records_sorting(sort_field, order)]
+  end
+
+  def mud_records_sorting(_), do: []
+
+  defp do_mud_records_sorting("key_bytes", "asc"), do: [asc_nulls_first: :key_bytes]
+  defp do_mud_records_sorting("key_bytes", "desc"), do: [desc_nulls_last: :key_bytes]
+  defp do_mud_records_sorting("key0", "asc"), do: [asc_nulls_first: :key0]
+  defp do_mud_records_sorting("key0", "desc"), do: [desc_nulls_last: :key0]
+  defp do_mud_records_sorting("key1", "asc"), do: [asc_nulls_first: :key1]
+  defp do_mud_records_sorting("key1", "desc"), do: [desc_nulls_last: :key1]
+  defp do_mud_records_sorting(_, _), do: []
+
+  @spec validators_blackfort_sorting(%{required(String.t()) => String.t()}) :: [
+          {:sorting, SortingHelper.sorting_params()}
+        ]
+  def validators_blackfort_sorting(%{"sort" => sort_field, "order" => order}) do
+    [sorting: do_validators_blackfort_sorting(sort_field, order)]
+  end
+
+  def validators_blackfort_sorting(_), do: []
+
+  defp do_validators_blackfort_sorting("address_hash", "asc"), do: [asc_nulls_first: :address_hash]
+  defp do_validators_blackfort_sorting("address_hash", "desc"), do: [desc_nulls_last: :address_hash]
+
+  defp do_validators_blackfort_sorting(_, _), do: []
 end

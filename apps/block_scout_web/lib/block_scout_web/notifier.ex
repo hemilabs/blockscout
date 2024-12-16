@@ -29,6 +29,14 @@ defmodule BlockScoutWeb.Notifier do
 
   @check_broadcast_sequence_period 500
 
+  case Application.compile_env(:explorer, :chain_type) do
+    :arbitrum ->
+      @chain_type_specific_events ~w(new_arbitrum_batches new_messages_to_arbitrum_amount)a
+
+    _ ->
+      nil
+  end
+
   def handle_event({:chain_event, :addresses, type, addresses}) when type in [:realtime, :on_demand] do
     Endpoint.broadcast("addresses:new_address", "count", %{count: Counters.address_estimated_count()})
 
@@ -105,7 +113,7 @@ defmodule BlockScoutWeb.Notifier do
   end
 
   def handle_event({:chain_event, :blocks, :realtime, blocks}) do
-    last_broadcasted_block_number = Helper.fetch_from_cache(:number, :last_broadcasted_block)
+    last_broadcasted_block_number = Helper.fetch_from_ets_cache(:number, :last_broadcasted_block)
 
     blocks
     |> Enum.sort_by(& &1.number, :asc)
@@ -155,7 +163,7 @@ defmodule BlockScoutWeb.Notifier do
     Endpoint.broadcast("transactions:#{transaction_hash}", "raw_trace", %{raw_trace_origin: transaction_hash})
   end
 
-  # internal txs broadcast disabled on the indexer level, therefore it out of scope of the refactoring within https://github.com/blockscout/blockscout/pull/7474
+  # internal transactions broadcast disabled on the indexer level, therefore it out of scope of the refactoring within https://github.com/blockscout/blockscout/pull/7474
   def handle_event({:chain_event, :internal_transactions, :realtime, internal_transactions}) do
     internal_transactions
     |> Stream.map(
@@ -169,11 +177,13 @@ defmodule BlockScoutWeb.Notifier do
   def handle_event({:chain_event, :token_transfers, :realtime, all_token_transfers}) do
     all_token_transfers_full =
       all_token_transfers
-      |> Enum.map(
-        &(&1
-          |> Repo.preload(
-            DenormalizationHelper.extend_transaction_preload([:from_address, :to_address, :token, :transaction])
-          ))
+      |> Repo.preload(
+        DenormalizationHelper.extend_transaction_preload([
+          :token,
+          :transaction,
+          from_address: [:scam_badge, :names, :smart_contract, :proxy_implementations],
+          to_address: [:scam_badge, :names, :smart_contract, :proxy_implementations]
+        ])
       )
 
     transfers_by_token = Enum.group_by(all_token_transfers_full, fn tt -> to_string(tt.token_contract_address_hash) end)
@@ -193,15 +203,21 @@ defmodule BlockScoutWeb.Notifier do
   end
 
   def handle_event({:chain_event, :transactions, :realtime, transactions}) do
-    base_preloads = [:block, created_contract_address: :names, from_address: :names, to_address: :names]
+    base_preloads = [
+      :block,
+      created_contract_address: [:scam_badge, :names, :smart_contract, :proxy_implementations],
+      from_address: [:scam_badge, :names, :smart_contract, :proxy_implementations],
+      to_address: [:scam_badge, :names, :smart_contract, :proxy_implementations]
+    ]
+
     preloads = if API_V2.enabled?(), do: [:token_transfers | base_preloads], else: base_preloads
 
     transactions
     |> Repo.preload(preloads)
     |> broadcast_transactions_websocket_v2()
-    |> Enum.map(fn tx ->
+    |> Enum.map(fn transaction ->
       # Disable parsing of token transfers from websocket for transaction tab because we display token transfers at a separate tab
-      Map.put(tx, :token_transfers, [])
+      Map.put(transaction, :token_transfers, [])
     end)
     |> Enum.each(&broadcast_transaction/1)
   end
@@ -228,6 +244,21 @@ defmodule BlockScoutWeb.Notifier do
     Endpoint.broadcast("tokens:#{to_string(contract_address_hash)}", "token_total_supply", %{token: token})
   end
 
+  def handle_event({:chain_event, :fetched_bytecode, :on_demand, [address_hash, fetched_bytecode]}) do
+    Endpoint.broadcast("addresses:#{to_string(address_hash)}", "fetched_bytecode", %{fetched_bytecode: fetched_bytecode})
+  end
+
+  def handle_event(
+        {:chain_event, :fetched_token_instance_metadata, :on_demand,
+         [token_contract_address_hash_string, token_id, fetched_token_instance_metadata]}
+      ) do
+    Endpoint.broadcast(
+      "token_instances:#{token_contract_address_hash_string}",
+      "fetched_token_instance_metadata",
+      %{token_id: token_id, fetched_metadata: fetched_token_instance_metadata}
+    )
+  end
+
   def handle_event({:chain_event, :changed_bytecode, :on_demand, [address_hash]}) do
     Endpoint.broadcast("addresses:#{to_string(address_hash)}", "changed_bytecode", %{})
   end
@@ -252,6 +283,16 @@ defmodule BlockScoutWeb.Notifier do
     Endpoint.broadcast("addresses:#{address_current_token_balances.address_hash}", "address_current_token_balances", %{
       address_current_token_balances: address_current_token_balances.address_current_token_balances
     })
+  end
+
+  case Application.compile_env(:explorer, :chain_type) do
+    :arbitrum ->
+      def handle_event({:chain_event, topic, _, _} = event) when topic in @chain_type_specific_events,
+        # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+        do: BlockScoutWeb.Notifiers.Arbitrum.handle_event(event)
+
+    _ ->
+      nil
   end
 
   def handle_event(event) do
@@ -327,7 +368,7 @@ defmodule BlockScoutWeb.Notifier do
 
   defp schedule_broadcasting(block) do
     :timer.sleep(@check_broadcast_sequence_period)
-    last_broadcasted_block_number = Helper.fetch_from_cache(:number, :last_broadcasted_block)
+    last_broadcasted_block_number = Helper.fetch_from_ets_cache(:number, :last_broadcasted_block)
 
     if last_broadcasted_block_number == BlockNumberHelper.previous_block_number(block.number) do
       broadcast_block(block)
@@ -433,7 +474,7 @@ defmodule BlockScoutWeb.Notifier do
   end
 
   defp broadcast_transactions_websocket_v2_inner(transactions, default_channel, event) do
-    if Enum.count(transactions) > 0 do
+    if not Enum.empty?(transactions) do
       Endpoint.broadcast(default_channel, event, %{
         transactions: transactions
       })

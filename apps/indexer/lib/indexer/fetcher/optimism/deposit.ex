@@ -28,6 +28,7 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
     :safe_block,
     :optimism_portal,
     :json_rpc_named_arguments,
+    :transaction_type,
     mode: :catch_up,
     filter_id: nil,
     check_interval: nil
@@ -66,21 +67,21 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
     Logger.metadata(fetcher: @fetcher_name)
 
     env = Application.get_all_env(:indexer)[__MODULE__]
-    optimism_env = Application.get_all_env(:indexer)[Indexer.Fetcher.Optimism]
-    optimism_portal = optimism_env[:optimism_l1_portal]
+    optimism_env = Application.get_all_env(:indexer)[Optimism]
+    system_config = optimism_env[:optimism_l1_system_config]
     optimism_l1_rpc = optimism_env[:optimism_l1_rpc]
 
-    with {:start_block_l1_undefined, false} <- {:start_block_l1_undefined, is_nil(env[:start_block_l1])},
-         {:optimism_portal_valid, true} <- {:optimism_portal_valid, Helper.address_correct?(optimism_portal)},
+    with {:system_config_valid, true} <- {:system_config_valid, Helper.address_correct?(system_config)},
          {:rpc_l1_undefined, false} <- {:rpc_l1_undefined, is_nil(optimism_l1_rpc)},
-         start_block_l1 <- parse_integer(env[:start_block_l1]),
-         false <- is_nil(start_block_l1),
-         true <- start_block_l1 > 0,
-         {last_l1_block_number, last_l1_tx_hash} <- get_last_l1_item(),
          json_rpc_named_arguments = Optimism.json_rpc_named_arguments(optimism_l1_rpc),
-         {:ok, last_l1_tx} <- Optimism.get_transaction_by_hash(last_l1_tx_hash, json_rpc_named_arguments),
-         {:l1_tx_not_found, false} <- {:l1_tx_not_found, !is_nil(last_l1_tx_hash) && is_nil(last_l1_tx)},
-         {safe_block, _} = Optimism.get_safe_block(json_rpc_named_arguments),
+         {optimism_portal, start_block_l1} <- Optimism.read_system_config(system_config, json_rpc_named_arguments),
+         true <- start_block_l1 > 0,
+         {last_l1_block_number, last_l1_transaction_hash} <- get_last_l1_item(),
+         {:ok, last_l1_transaction} <-
+           Optimism.get_transaction_by_hash(last_l1_transaction_hash, json_rpc_named_arguments),
+         {:l1_transaction_not_found, false} <-
+           {:l1_transaction_not_found, !is_nil(last_l1_transaction_hash) && is_nil(last_l1_transaction)},
+         {safe_block, _} = Helper.get_safe_block(json_rpc_named_arguments),
          {:start_block_l1_valid, true} <-
            {:start_block_l1_valid,
             (start_block_l1 <= last_l1_block_number || last_l1_block_number == 0) && start_block_l1 <= safe_block} do
@@ -99,13 +100,10 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
          safe_block: safe_block,
          optimism_portal: optimism_portal,
          json_rpc_named_arguments: json_rpc_named_arguments,
-         batch_size: parse_integer(env[:batch_size]) || @batch_size
+         batch_size: parse_integer(env[:batch_size]) || @batch_size,
+         transaction_type: env[:transaction_type]
        }}
     else
-      {:start_block_l1_undefined, true} ->
-        # the process shouldn't start if the start block is not defined
-        {:stop, :normal, state}
-
       {:start_block_l1_valid, false} ->
         Logger.error("Invalid L1 Start Block value. Please, check the value and op_deposits table.")
         {:stop, :normal, state}
@@ -114,8 +112,8 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
         Logger.error("L1 RPC URL is not defined.")
         {:stop, :normal, state}
 
-      {:optimism_portal_valid, false} ->
-        Logger.error("OptimismPortal contract address is invalid or undefined.")
+      {:system_config_valid, false} ->
+        Logger.error("SystemConfig contract address is invalid or undefined.")
         {:stop, :normal, state}
 
       {:error, error_data} ->
@@ -123,11 +121,15 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
 
         {:stop, :normal, state}
 
-      {:l1_tx_not_found, true} ->
+      {:l1_transaction_not_found, true} ->
         Logger.error(
           "Cannot find last L1 transaction from RPC by its hash. Probably, there was a reorg on L1 chain. Please, check op_deposits table."
         )
 
+        {:stop, :normal, state}
+
+      nil ->
+        Logger.error("Cannot read SystemConfig contract.")
         {:stop, :normal, state}
 
       _ ->
@@ -146,7 +148,8 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
           optimism_portal: optimism_portal,
           json_rpc_named_arguments: json_rpc_named_arguments,
           mode: :catch_up,
-          batch_size: batch_size
+          batch_size: batch_size,
+          transaction_type: transaction_type
         } = state
       ) do
     to_block = min(from_block + batch_size, safe_block)
@@ -162,7 +165,7 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
               3
             )},
          _ = Helper.log_blocks_chunk_handling(from_block, to_block, start_block, safe_block, nil, :L1),
-         deposits = events_to_deposits(logs, json_rpc_named_arguments),
+         deposits = events_to_deposits(logs, transaction_type, json_rpc_named_arguments),
          {:import, {:ok, _imported}} <-
            {:import, Chain.import(%{optimism_deposits: %{params: deposits}, timeout: :infinity})} do
       Publisher.broadcast(%{optimism_deposits: deposits}, :realtime)
@@ -214,7 +217,8 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
           optimism_portal: optimism_portal,
           json_rpc_named_arguments: json_rpc_named_arguments,
           batch_size: batch_size,
-          mode: :catch_up
+          mode: :catch_up,
+          transaction_type: transaction_type
         } = state
       ) do
     with {:check_interval, {:ok, check_interval, new_safe}} <-
@@ -238,7 +242,7 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
              @transaction_deposited_event,
              json_rpc_named_arguments
            ) do
-      handle_new_logs(logs, json_rpc_named_arguments)
+      handle_new_logs(logs, transaction_type, json_rpc_named_arguments)
       Process.send(self(), :fetch, [])
       {:noreply, %{state | mode: :realtime, filter_id: filter_id, check_interval: check_interval}}
     else
@@ -270,12 +274,13 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
           json_rpc_named_arguments: json_rpc_named_arguments,
           mode: :realtime,
           filter_id: filter_id,
-          check_interval: check_interval
+          check_interval: check_interval,
+          transaction_type: transaction_type
         } = state
       ) do
     case get_filter_changes(filter_id, json_rpc_named_arguments) do
       {:ok, logs} ->
-        handle_new_logs(logs, json_rpc_named_arguments)
+        handle_new_logs(logs, transaction_type, json_rpc_named_arguments)
         Process.send_after(self(), :fetch, check_interval)
         {:noreply, state}
 
@@ -344,7 +349,7 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
     :ok
   end
 
-  defp handle_new_logs(logs, json_rpc_named_arguments) do
+  defp handle_new_logs(logs, transaction_type, json_rpc_named_arguments) do
     {reorgs, logs_to_parse, min_block, max_block, cnt} =
       logs
       |> Enum.reduce({MapSet.new(), [], nil, 0, 0}, fn
@@ -364,7 +369,7 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
     handle_reorgs(reorgs)
 
     unless Enum.empty?(logs_to_parse) do
-      deposits = events_to_deposits(logs_to_parse, json_rpc_named_arguments)
+      deposits = events_to_deposits(logs_to_parse, transaction_type, json_rpc_named_arguments)
       {:ok, _imported} = Chain.import(%{optimism_deposits: %{params: deposits}, timeout: :infinity})
 
       Publisher.broadcast(%{optimism_deposits: deposits}, :realtime)
@@ -380,7 +385,7 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
     end
   end
 
-  defp events_to_deposits(logs, json_rpc_named_arguments) do
+  defp events_to_deposits(logs, transaction_type, json_rpc_named_arguments) do
     timestamps =
       logs
       |> Enum.reduce(MapSet.new(), fn %{"blockNumber" => block_number_quantity}, acc ->
@@ -401,7 +406,7 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
           %{}
       end
 
-    Enum.map(logs, &event_to_deposit(&1, timestamps))
+    Enum.map(logs, &event_to_deposit(&1, timestamps, transaction_type))
   end
 
   defp event_to_deposit(
@@ -413,7 +418,8 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
            "topics" => [_, @address_prefix <> from_stripped, @address_prefix <> to_stripped, _],
            "data" => opaque_data
          },
-         timestamps
+         timestamps,
+         transaction_type
        ) do
     {_, prefixed_block_hash} = (String.pad_leading("", 64, "0") <> stripped_block_hash) |> String.split_at(-64)
     {_, prefixed_log_index} = (String.pad_leading("", 64, "0") <> stripped_log_index) |> String.split_at(-64)
@@ -454,8 +460,17 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
         encoding: :hex
       )
 
-    l2_tx_hash =
-      "0x" <> ("7e#{rlp_encoded}" |> Base.decode16!(case: :mixed) |> ExKeccak.hash_256() |> Base.encode16(case: :lower))
+    transaction_type =
+      transaction_type
+      |> Integer.to_string(16)
+      |> String.downcase()
+
+    l2_transaction_hash =
+      "0x" <>
+        ((transaction_type <> "#{rlp_encoded}")
+         |> Base.decode16!(case: :mixed)
+         |> ExKeccak.hash_256()
+         |> Base.encode16(case: :lower))
 
     block_number = quantity_to_integer(block_number_quantity)
 
@@ -464,7 +479,7 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
       l1_block_timestamp: Map.get(timestamps, block_number),
       l1_transaction_hash: transaction_hash,
       l1_transaction_origin: "0x" <> from_stripped,
-      l2_transaction_hash: l2_tx_hash
+      l2_transaction_hash: l2_transaction_hash
     }
   end
 

@@ -1,8 +1,6 @@
 defmodule BlockScoutWeb.API.RPC.BlockControllerTest do
   use BlockScoutWeb.ConnCase
 
-  import EthereumJSONRPC, only: [integer_to_quantity: 1]
-
   alias BlockScoutWeb.Chain
   alias Explorer.Chain.{Hash, Wei}
   alias Explorer.Counters.AverageBlockTime
@@ -58,8 +56,6 @@ defmodule BlockScoutWeb.API.RPC.BlockControllerTest do
       |> insert(gas_price: 1)
       |> with_block(block, gas_used: 1)
 
-      block_quantity = integer_to_quantity(block.number)
-
       expected_reward =
         emission_reward.reward
         |> Wei.to(:wei)
@@ -100,8 +96,6 @@ defmodule BlockScoutWeb.API.RPC.BlockControllerTest do
       :transaction
       |> insert(gas_price: 1)
       |> with_block(block, gas_used: 1)
-
-      block_quantity = integer_to_quantity(block.number)
 
       decimal_emission_reward = Wei.to(emission_reward.reward, :wei)
 
@@ -328,6 +322,38 @@ defmodule BlockScoutWeb.API.RPC.BlockControllerTest do
 
       timestamp_in_the_past_str =
         (timestamp_int - 1)
+        |> to_string()
+
+      expected_result = %{
+        "blockNumber" => "#{block.number}"
+      }
+
+      assert response =
+               conn
+               |> get("/api", %{
+                 "module" => "block",
+                 "action" => "getblocknobytime",
+                 "timestamp" => "#{timestamp_in_the_past_str}",
+                 "closest" => "after"
+               })
+               |> json_response(200)
+
+      assert response["result"] == expected_result
+      assert response["status"] == "1"
+      assert response["message"] == "OK"
+      schema = resolve_getblockreward_schema()
+      assert :ok = ExJsonSchema.Validator.validate(schema, response)
+    end
+
+    test "returns any nearest block within arbitrary range of time", %{conn: conn} do
+      timestamp_string = "1617020209"
+      {:ok, timestamp} = Chain.param_to_block_timestamp(timestamp_string)
+      block = insert(:block, timestamp: timestamp)
+
+      {timestamp_int, _} = Integer.parse(timestamp_string)
+
+      timestamp_in_the_past_str =
+        (timestamp_int - 2 * 60)
         |> to_string()
 
       expected_result = %{

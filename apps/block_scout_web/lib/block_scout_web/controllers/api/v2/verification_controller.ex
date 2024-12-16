@@ -18,12 +18,43 @@ defmodule BlockScoutWeb.API.V2.VerificationController do
 
   @api_true [api?: true]
   @sc_verification_started "Smart-contract verification started"
+  @zk_optimization_modes ["0", "1", "2", "3", "s", "z"]
+
+  if Application.compile_env(:explorer, :chain_type) == :zksync do
+    @optimization_runs "0"
+  else
+    @optimization_runs 200
+  end
 
   def config(conn, _params) do
     solidity_compiler_versions = CompilerVersion.fetch_version_list(:solc)
     vyper_compiler_versions = CompilerVersion.fetch_version_list(:vyper)
 
-    verification_options =
+    verification_options = get_verification_options()
+
+    base_config =
+      %{
+        solidity_evm_versions: CodeCompiler.evm_versions(:solidity),
+        solidity_compiler_versions: solidity_compiler_versions,
+        vyper_compiler_versions: vyper_compiler_versions,
+        verification_options: verification_options,
+        vyper_evm_versions: CodeCompiler.evm_versions(:vyper),
+        is_rust_verifier_microservice_enabled: RustVerifierInterface.enabled?(),
+        license_types: Enum.into(SmartContract.license_types_enum(), %{})
+      }
+
+    config =
+      base_config
+      |> maybe_add_zk_options()
+
+    conn
+    |> json(config)
+  end
+
+  defp get_verification_options do
+    if Application.get_env(:explorer, :chain_type) == :zksync do
+      ["standard-input"]
+    else
       ["flattened-code", "standard-input", "vyper-code"]
       |> (&if(Application.get_env(:explorer, Explorer.ThirdPartyIntegrations.Sourcify)[:enabled],
             do: ["sourcify" | &1],
@@ -33,17 +64,19 @@ defmodule BlockScoutWeb.API.V2.VerificationController do
             do: ["multi-part", "vyper-multi-part", "vyper-standard-input"] ++ &1,
             else: &1
           )).()
+    end
+  end
 
-    conn
-    |> json(%{
-      solidity_evm_versions: CodeCompiler.evm_versions(:solidity),
-      solidity_compiler_versions: solidity_compiler_versions,
-      vyper_compiler_versions: vyper_compiler_versions,
-      verification_options: verification_options,
-      vyper_evm_versions: CodeCompiler.evm_versions(:vyper),
-      is_rust_verifier_microservice_enabled: RustVerifierInterface.enabled?(),
-      license_types: Enum.into(SmartContract.license_types_enum(), %{})
-    })
+  defp maybe_add_zk_options(config) do
+    if Application.get_env(:explorer, :chain_type) == :zksync do
+      zk_compiler_versions = CompilerVersion.fetch_version_list(:zk)
+
+      config
+      |> Map.put(:zk_compiler_versions, zk_compiler_versions)
+      |> Map.put(:zk_optimization_modes, @zk_optimization_modes)
+    else
+      config
+    end
   end
 
   def verification_via_flattened_code(
@@ -62,7 +95,7 @@ defmodule BlockScoutWeb.API.V2.VerificationController do
         }
         |> Map.put("optimization", Map.get(params, "is_optimization_enabled", false))
         |> (&if(params |> Map.get("is_optimization_enabled", false) |> parse_boolean(),
-              do: Map.put(&1, "optimization_runs", Map.get(params, "optimization_runs", 200)),
+              do: Map.put(&1, "optimization_runs", Map.get(params, "optimization_runs", @optimization_runs)),
               else: &1
             )).()
         |> Map.put("evm_version", Map.get(params, "evm_version", "default"))
@@ -98,6 +131,10 @@ defmodule BlockScoutWeb.API.V2.VerificationController do
         |> Map.put("constructor_arguments", Map.get(params, "constructor_args", ""))
         |> Map.put("name", Map.get(params, "contract_name", ""))
         |> Map.put("license_type", Map.get(params, "license_type"))
+        |> (&if(Application.get_env(:explorer, :chain_type) == :zksync,
+              do: Map.put(&1, "zk_compiler_version", Map.get(params, "zk_compiler_version")),
+              else: &1
+            )).()
 
       log_sc_verification_started(address_hash_string)
       Que.add(SolidityPublisherWorker, {"json_api_v2", verification_params, json_input})
@@ -150,7 +187,7 @@ defmodule BlockScoutWeb.API.V2.VerificationController do
         }
         |> Map.put("optimization", Map.get(params, "is_optimization_enabled", false))
         |> (&if(params |> Map.get("is_optimization_enabled", false) |> parse_boolean(),
-              do: Map.put(&1, "optimization_runs", Map.get(params, "optimization_runs", 200)),
+              do: Map.put(&1, "optimization_runs", Map.get(params, "optimization_runs", @optimization_runs)),
               else: &1
             )).()
         |> Map.put("evm_version", Map.get(params, "evm_version", "default"))
