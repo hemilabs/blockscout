@@ -3,7 +3,7 @@ name: Publish Docker image on every push to default branch
 on:
   push:
     branches:
-      - production-optimism-stg # Hemi default branch
+      - production-hemi # Hemi default branch
   workflow_dispatch:
 
 env:
@@ -23,7 +23,7 @@ jobs:
         with:
           docker-username: ${{ secrets.DOCKERHUB_USERNAME }}
           docker-password: ${{ secrets.DOCKERHUB_TOKEN }}
-          docker-remote-multi-platform: true
+          docker-remote-multi-platform: ''
           docker-arm-host: ${{ secrets.ARM_RUNNER_HOSTNAME }}
           docker-arm-host-key: ${{ secrets.ARM_RUNNER_KEY }}
 
@@ -39,7 +39,6 @@ jobs:
           labels: ${{ steps.setup.outputs.docker-labels }}
           platforms: |
             linux/amd64
-            linux/arm64/v8
           build-args: |
             DISABLE_WEBAPP=false
             API_V1_READ_METHODS_DISABLED=false
@@ -55,6 +54,7 @@ jobs:
             AMPLITUDE_API_KEY=
             BLOCKSCOUT_VERSION=v${{ env.RELEASE_VERSION }}-beta.+commit.${{ env.SHORT_SHA }}
             RELEASE_VERSION=${{ env.RELEASE_VERSION }}
+            CHAIN_TYPE=optimism
 
       - name: Build and push Docker image (indexer)
         uses: docker/build-push-action@v5
@@ -62,11 +62,10 @@ jobs:
           context: .
           file: ./docker/Dockerfile
           push: true
-          tags: blockscout/blockscout:${{ env.RELEASE_VERSION }}.commit.${{ env.SHORT_SHA }}-indexer
+          tags: hemilabs/blockscout:${{ env.RELEASE_VERSION }}.commit.${{ env.SHORT_SHA }}-indexer
           labels: ${{ steps.setup.outputs.docker-labels }}
           platforms: |
             linux/amd64
-            linux/arm64/v8
           build-args: |
             DISABLE_API=true
             DISABLE_WEBAPP=true
@@ -89,11 +88,10 @@ jobs:
           context: .
           file: ./docker/Dockerfile
           push: true
-          tags: blockscout/blockscout:${{ env.RELEASE_VERSION }}.commit.${{ env.SHORT_SHA }}-api
+          tags: hemilabs/blockscout:${{ env.RELEASE_VERSION }}.commit.${{ env.SHORT_SHA }}-api
           labels: ${{ steps.setup.outputs.docker-labels }}
           platforms: |
             linux/amd64
-            linux/arm64/v8
           build-args: |
             DISABLE_INDEXER=true
             DISABLE_WEBAPP=true
@@ -121,7 +119,6 @@ jobs:
           labels: ${{ steps.setup.outputs.docker-labels }}
           platforms: |
             linux/amd64
-            linux/arm64/v8
           build-args: |
             CACHE_EXCHANGE_RATES_PERIOD=
             API_V1_READ_METHODS_DISABLED=false
@@ -133,6 +130,8 @@ jobs:
             SESSION_COOKIE_DOMAIN=k8s-dev.blockscout.com
             BLOCKSCOUT_VERSION=v${{ env.RELEASE_VERSION }}-beta.+commit.${{ env.SHORT_SHA }}
             RELEASE_VERSION=${{ env.RELEASE_VERSION }}
+            CHAIN_TYPE=optimism
+
   deploy_e2e:
     needs: push_to_registry
     runs-on: ubuntu-latest
@@ -162,7 +161,7 @@ jobs:
           client_payload: '{ "instance": "dev", "globalEnv": "e2e"}'
     # This job tries to deploy the new built images to k8s. But we don't have
     # such setup in the Hemi setup. Disabling instead of deleting to keep this
-    # as referenence for potential future improvements.
+    # as reference for potential future improvements.
     if: false
   test:
     needs: deploy_e2e
@@ -173,5 +172,5 @@ jobs:
       id-token: write
     # This job tries to run tests in the deployed k8s setup. But we don't have
     # such setup in the Hemi setup. Disabling instead of deleting to keep this
-    # as referenence for potential future improvements.
+    # as reference for potential future improvements.
     if: false

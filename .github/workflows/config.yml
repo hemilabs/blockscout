@@ -4,22 +4,7 @@ on:
   push:
     branches:
       - master
-      - production-arbitrum
-      - production-core
-      - production-eth-sepolia
-      - production-filecoin
-      - production-fuse
-      - production-optimism
-      - production-optimism-stg # Hemi default branch
-      - production-immutable
-      - production-iota
-      - production-lukso
-      - production-rsk
-      - production-sokol
-      - production-suave
-      - production-xdai
-      - production-zkevm
-      - production-zksync
+      - production-hemi # Hemi default branch
       - staging-l2
     paths-ignore:
       - 'CHANGELOG.md'
@@ -29,7 +14,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
     branches:
-      - production-hemi
+      - master
 
 env:
   MIX_ENV: test
@@ -50,8 +35,8 @@ jobs:
 
             // Add/remove CI matrix chain types here
             const defaultChainTypes = ["default"];
-            const chainTypes = ["ethereum", "polygon_zkevm", "rsk", "stability", "filecoin", "optimism", "arbitrum", "celo", "zetachain", "zksync", "shibarium", "blackfort", "scroll"];
-            const extraChainTypes = ["suave", "polygon_edge"];
+            const chainTypes = ["optimism"];
+            const extraChainTypes = [];
 
             // Chain type matrix we use in master branch
             const allChainTypes = [].concat(defaultChainTypes, chainTypes, extraChainTypes);

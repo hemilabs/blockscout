@@ -20,7 +20,7 @@ inputs:
   docker-image:
     description: 'Docker image'
     required: true
-    default: blockscout/blockscout
+    default: hemilabs/blockscout
 outputs:
   docker-builder:
     description: 'Docker builder'
