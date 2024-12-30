@@ -68,13 +68,14 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
 
     env = Application.get_all_env(:indexer)[__MODULE__]
     optimism_env = Application.get_all_env(:indexer)[Optimism]
-    system_config = optimism_env[:optimism_l1_system_config]
+    optimism_portal = optimism_env[:optimism_l1_portal]
     optimism_l1_rpc = optimism_env[:optimism_l1_rpc]
 
-    with {:system_config_valid, true} <- {:system_config_valid, Helper.address_correct?(system_config)},
+    with {:start_block_l1_undefined, false} <- {:start_block_l1_undefined, is_nil(optimism_env[:start_block_l1])},
+         {:optimism_portal_valid, true} <- {:optimism_portal_valid, Helper.address_correct?(optimism_portal)},
          {:rpc_l1_undefined, false} <- {:rpc_l1_undefined, is_nil(optimism_l1_rpc)},
          json_rpc_named_arguments = Optimism.json_rpc_named_arguments(optimism_l1_rpc),
-         {optimism_portal, start_block_l1} <- Optimism.read_system_config(system_config, json_rpc_named_arguments),
+         start_block_l1 <- parse_integer(optimism_env[:start_block_l1]),
          true <- start_block_l1 > 0,
          {last_l1_block_number, last_l1_transaction_hash} <- get_last_l1_item(),
          {:ok, last_l1_transaction} <-
@@ -104,6 +105,10 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
          transaction_type: env[:transaction_type]
        }}
     else
+      {:start_block_l1_undefined, true} ->
+        # the process shouldn't start if the start block is not defined
+        {:stop, :normal, state}
+
       {:start_block_l1_valid, false} ->
         Logger.error("Invalid L1 Start Block value. Please, check the value and op_deposits table.")
         {:stop, :normal, state}
@@ -112,8 +117,8 @@ defmodule Indexer.Fetcher.Optimism.Deposit do
         Logger.error("L1 RPC URL is not defined.")
         {:stop, :normal, state}
 
-      {:system_config_valid, false} ->
-        Logger.error("SystemConfig contract address is invalid or undefined.")
+      {:optimism_portal_valid, false} ->
+        Logger.error("OptimismPortal contract address is invalid or undefined.")
         {:stop, :normal, state}
 
       {:error, error_data} ->

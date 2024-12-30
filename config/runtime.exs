@@ -875,7 +875,8 @@ config :indexer, Indexer.Fetcher.Optimism.WithdrawalEvent.Supervisor, enabled: C
 
 config :indexer, Indexer.Fetcher.Optimism,
   optimism_l1_rpc: System.get_env("INDEXER_OPTIMISM_L1_RPC"),
-  optimism_l1_system_config: System.get_env("INDEXER_OPTIMISM_L1_SYSTEM_CONFIG_CONTRACT")
+  optimism_l1_portal: System.get_env("INDEXER_OPTIMISM_L1_PORTAL_CONTRACT"),
+  start_block_l1: System.get_env("INDEXER_OPTIMISM_L1_START_BLOCK")
 
 config :indexer, Indexer.Fetcher.Optimism.Deposit,
   batch_size: System.get_env("INDEXER_OPTIMISM_L1_DEPOSITS_BATCH_SIZE"),
@@ -890,6 +891,8 @@ config :indexer, Indexer.Fetcher.Optimism.Withdrawal,
     System.get_env("INDEXER_OPTIMISM_L2_MESSAGE_PASSER_CONTRACT", "0x4200000000000000000000000000000000000016")
 
 config :indexer, Indexer.Fetcher.Optimism.TransactionBatch,
+  batch_inbox: System.get_env("INDEXER_OPTIMISM_L1_BATCH_INBOX"),
+  batch_submitter: System.get_env("INDEXER_OPTIMISM_L1_BATCH_SUBMITTER"),
   blocks_chunk_size: System.get_env("INDEXER_OPTIMISM_L1_BATCH_BLOCKS_CHUNK_SIZE", "4"),
   eip4844_blobs_api_url: System.get_env("INDEXER_OPTIMISM_L1_BATCH_BLOCKSCOUT_BLOBS_API_URL", ""),
   celestia_blobs_api_url: System.get_env("INDEXER_OPTIMISM_L1_BATCH_CELESTIA_BLOBS_API_URL", ""),

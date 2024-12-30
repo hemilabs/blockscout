@@ -17,6 +17,8 @@ defmodule Indexer.Fetcher.Optimism do
       request: 1
     ]
 
+  import Explorer.Helper, only: [parse_integer: 1]
+
   alias EthereumJSONRPC.Block.ByNumber
   alias EthereumJSONRPC.Contract
   alias Indexer.Helper
@@ -228,15 +230,15 @@ defmodule Indexer.Fetcher.Optimism do
       end
 
     optimism_env = Application.get_all_env(:indexer)[__MODULE__]
-    system_config = optimism_env[:optimism_l1_system_config]
     optimism_l1_rpc = l1_rpc_url()
 
-    with {:system_config_valid, true} <- {:system_config_valid, Helper.address_correct?(system_config)},
+    with {:start_block_l1_undefined, false} <- {:start_block_l1_undefined, is_nil(optimism_env[:start_block_l1])},
          {:reorg_monitor_started, true} <-
            {:reorg_monitor_started, !is_nil(Process.whereis(Indexer.Fetcher.RollupL1ReorgMonitor))},
          {:rpc_l1_undefined, false} <- {:rpc_l1_undefined, is_nil(optimism_l1_rpc)},
          json_rpc_named_arguments = json_rpc_named_arguments(optimism_l1_rpc),
-         {optimism_portal, start_block_l1} <- read_system_config(system_config, json_rpc_named_arguments),
+         {optimism_portal, start_block_l1} <-
+           {optimism_env[:optimism_l1_portal], parse_integer(optimism_env[:start_block_l1])},
          {:contract_is_valid, true} <-
            {:contract_is_valid,
             caller == Indexer.Fetcher.Optimism.WithdrawalEvent or Helper.address_correct?(output_oracle)},
@@ -269,6 +271,10 @@ defmodule Indexer.Fetcher.Optimism do
          stop: false
        }}
     else
+      {:start_block_l1_undefined, true} ->
+        # the process shouldn't start if the start block is not defined
+        {:stop, :normal, %{}}
+
       {:reorg_monitor_started, false} ->
         Logger.error(
           "Cannot start this process as reorg monitor in Indexer.Fetcher.RollupL1ReorgMonitor is not started."
@@ -278,10 +284,6 @@ defmodule Indexer.Fetcher.Optimism do
 
       {:rpc_l1_undefined, true} ->
         Logger.error("L1 RPC URL is not defined.")
-        {:stop, :normal, %{}}
-
-      {:system_config_valid, false} ->
-        Logger.error("SystemConfig contract address is invalid or undefined.")
         {:stop, :normal, %{}}
 
       {:contract_is_valid, false} ->
@@ -377,7 +379,6 @@ defmodule Indexer.Fetcher.Optimism do
   """
   @spec requires_l1_reorg_monitor?() :: boolean()
   def requires_l1_reorg_monitor? do
-    optimism_config = Application.get_all_env(:indexer)[__MODULE__]
-    not is_nil(optimism_config[:optimism_l1_system_config])
+    false
   end
 end

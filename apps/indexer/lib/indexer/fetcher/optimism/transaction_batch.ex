@@ -85,19 +85,18 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
     env = Application.get_all_env(:indexer)[__MODULE__]
 
     optimism_env = Application.get_all_env(:indexer)[Indexer.Fetcher.Optimism]
-    system_config = optimism_env[:optimism_l1_system_config]
     optimism_l1_rpc = l1_rpc_url()
 
-    with {:system_config_valid, true} <-
-           {:system_config_valid, Helper.address_correct?(system_config)},
+    with {:start_block_l1_undefined, false} <- {:start_block_l1_undefined, is_nil(optimism_env[:start_block_l1])},
          {:genesis_block_l2_invalid, false} <-
            {:genesis_block_l2_invalid, is_nil(env[:genesis_block_l2]) or env[:genesis_block_l2] < 0},
          {:reorg_monitor_started, true} <-
            {:reorg_monitor_started, !is_nil(Process.whereis(RollupL1ReorgMonitor))},
          {:rpc_l1_undefined, false} <- {:rpc_l1_undefined, is_nil(optimism_l1_rpc)},
          json_rpc_named_arguments = Optimism.json_rpc_named_arguments(optimism_l1_rpc),
-         {:system_config_read, {start_block_l1, batch_inbox, batch_submitter}} <-
-           {:system_config_read, read_system_config(system_config, json_rpc_named_arguments)},
+         {start_block_l1, batch_inbox, batch_submitter} <-
+           {parse_integer(optimism_env[:start_block_l1]), String.downcase(env[:batch_inbox]),
+            String.downcase(env[:batch_submitter])},
          {:batch_inbox_valid, true} <- {:batch_inbox_valid, Helper.address_correct?(batch_inbox)},
          {:batch_submitter_valid, true} <-
            {:batch_submitter_valid, Helper.address_correct?(batch_submitter)},
@@ -133,8 +132,8 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
          json_rpc_named_arguments_l2: json_rpc_named_arguments_l2
        }}
     else
-      {:system_config_valid, false} ->
-        Logger.error("SystemConfig contract address is invalid or undefined.")
+      {:start_block_l1_undefined, true} ->
+        # the process shouldn't start if the start block is not defined
         {:stop, :normal, state}
 
       {:genesis_block_l2_invalid, true} ->
@@ -179,10 +178,6 @@ defmodule Indexer.Fetcher.Optimism.TransactionBatch do
           "Cannot find last L1 transaction from RPC by its hash. Probably, there was a reorg on L1 chain. Please, check op_transaction_batches table."
         )
 
-        {:stop, :normal, state}
-
-      {:system_config_read, nil} ->
-        Logger.error("Cannot read SystemConfig contract.")
         {:stop, :normal, state}
 
       _ ->
