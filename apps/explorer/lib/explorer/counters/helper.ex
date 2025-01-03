@@ -10,13 +10,23 @@ defmodule Explorer.Counters.Helper do
     read_concurrency: true
   ]
 
+  @doc """
+    Returns the current time in milliseconds since the Unix epoch.
+
+    This function retrieves the current UTC time and converts it to Unix
+    timestamp in milliseconds.
+
+    ## Returns
+    - The number of milliseconds since the Unix epoch.
+  """
+  @spec current_time() :: non_neg_integer()
   def current_time do
     utc_now = DateTime.utc_now()
 
     DateTime.to_unix(utc_now, :millisecond)
   end
 
-  def fetch_from_cache(key, cache_name, default \\ 0) do
+  def fetch_from_ets_cache(key, cache_name, default \\ nil) do
     case :ets.lookup(cache_name, key) do
       [{_, value}] ->
         value
@@ -24,6 +34,10 @@ defmodule Explorer.Counters.Helper do
       [] ->
         default
     end
+  end
+
+  def put_into_ets_cache(cache_name, key, value) do
+    :ets.insert(cache_name, {key, value})
   end
 
   def create_cache_table(cache_name) do

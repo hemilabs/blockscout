@@ -1,5 +1,5 @@
 defmodule Explorer.ExchangeRatesTest do
-  use ExUnit.Case, async: false
+  use Explorer.DataCase
 
   import Mox
 
@@ -7,12 +7,16 @@ defmodule Explorer.ExchangeRatesTest do
   alias Explorer.ExchangeRates
   alias Explorer.ExchangeRates.Token
   alias Explorer.ExchangeRates.Source.TestSource
+  alias Explorer.Market.MarketHistoryCache
 
   @moduletag :capture_log
 
   setup :verify_on_exit!
 
   setup do
+    Supervisor.terminate_child(Explorer.Supervisor, {ConCache, MarketHistoryCache.cache_name()})
+    Supervisor.restart_child(Explorer.Supervisor, {ConCache, MarketHistoryCache.cache_name()})
+
     # Use TestSource mock and ets table for this test set
     source_configuration = Application.get_env(:explorer, Explorer.ExchangeRates.Source)
     rates_configuration = Application.get_env(:explorer, Explorer.ExchangeRates)
@@ -24,6 +28,8 @@ defmodule Explorer.ExchangeRatesTest do
     on_exit(fn ->
       Application.put_env(:explorer, Explorer.ExchangeRates.Source, source_configuration)
       Application.put_env(:explorer, Explorer.ExchangeRates, rates_configuration)
+      Supervisor.terminate_child(Explorer.Supervisor, Explorer.Chain.Cache.Blocks.child_id())
+      Supervisor.restart_child(Explorer.Supervisor, Explorer.Chain.Cache.Blocks.child_id())
     end)
   end
 
@@ -58,7 +64,7 @@ defmodule Explorer.ExchangeRatesTest do
     set_mox_global()
 
     assert {:noreply, ^state} = ExchangeRates.handle_info(:update, state)
-    assert_receive {_, {:ok, [%Token{}]}}
+    assert_receive {_, {:ok, false, [%Token{}]}}
   end
 
   describe "ticker fetch task" do
@@ -79,17 +85,15 @@ defmodule Explorer.ExchangeRatesTest do
         name: "test_name",
         symbol: "test_symbol",
         usd_value: Decimal.new("1.0"),
-        volume_24h_usd: Decimal.new("1000.0")
+        volume_24h_usd: Decimal.new("1000.0"),
+        image_url: nil
       }
-
-      expected_symbol = expected_token.symbol
-      expected_tuple = Token.to_tuple(expected_token)
 
       state = %{}
 
-      assert {:noreply, ^state} = ExchangeRates.handle_info({nil, {:ok, [expected_token]}}, state)
+      assert {:noreply, ^state} = ExchangeRates.handle_info({nil, {:ok, false, [expected_token]}}, state)
 
-      assert [^expected_tuple] = :ets.lookup(ExchangeRates.table_name(), expected_symbol)
+      assert [false: ^expected_token] = :ets.lookup(ExchangeRates.table_name(), false)
     end
 
     test "with failed fetch" do
@@ -107,25 +111,30 @@ defmodule Explorer.ExchangeRatesTest do
       expect(TestSource, :headers, fn -> [] end)
       set_mox_global()
 
-      assert {:noreply, ^state} = ExchangeRates.handle_info({nil, {:error, "some error"}}, state)
+      assert {:noreply, ^state} = ExchangeRates.handle_info({nil, {:error, false, "some error"}}, state)
 
       assert_receive :update
 
       assert {:noreply, ^state} = ExchangeRates.handle_info(:update, state)
-      assert_receive {_, {:ok, [%Token{}]}}
+      assert_receive {_, {:ok, false, [%Token{}]}}
     end
   end
 
   test "list/0" do
     ExchangeRates.init([])
 
+    rate_a = %Token{Token.null() | symbol: "a"}
+    rate_z = %Token{Token.null() | symbol: "z"}
+
     rates = [
-      %Token{Token.null() | symbol: "z"},
-      %Token{Token.null() | symbol: "a"}
+      rate_z,
+      rate_a
     ]
 
     expected_rates = Enum.reverse(rates)
-    for rate <- rates, do: :ets.insert(ExchangeRates.table_name(), Token.to_tuple(rate))
+
+    :ets.insert(ExchangeRates.table_name(), {false, rate_z})
+    :ets.insert(ExchangeRates.table_name(), {true, rate_a})
 
     assert expected_rates == ExchangeRates.list()
   end

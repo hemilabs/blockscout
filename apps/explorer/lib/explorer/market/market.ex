@@ -14,18 +14,18 @@ defmodule Explorer.Market do
 
   Today's date is include as part of the day count
   """
-  @spec fetch_recent_history() :: [MarketHistory.t()]
-  def fetch_recent_history do
-    MarketHistoryCache.fetch()
+  @spec fetch_recent_history(boolean()) :: [MarketHistory.t()]
+  def fetch_recent_history(secondary_coin? \\ false) do
+    MarketHistoryCache.fetch(secondary_coin?)
   end
 
   @doc """
   Retrieves today's native coin exchange rate from the database.
   """
-  @spec get_native_coin_exchange_rate_from_db() :: Token.t()
-  def get_native_coin_exchange_rate_from_db do
+  @spec get_native_coin_exchange_rate_from_db(boolean()) :: Token.t()
+  def get_native_coin_exchange_rate_from_db(secondary_coin? \\ false) do
     today =
-      case fetch_recent_history() do
+      case fetch_recent_history(secondary_coin?) do
         [today | _the_rest] -> today
         _ -> nil
       end
@@ -42,7 +42,8 @@ defmodule Explorer.Market do
         last_updated: nil,
         name: nil,
         symbol: nil,
-        volume_24h_usd: nil
+        volume_24h_usd: nil,
+        image_url: nil
       }
     else
       Token.null()
@@ -52,9 +53,17 @@ defmodule Explorer.Market do
   @doc """
   Get most recent exchange rate for the native coin from ETS or from DB.
   """
-  @spec get_coin_exchange_rate() :: Token.t() | nil
+  @spec get_coin_exchange_rate() :: Token.t()
   def get_coin_exchange_rate do
-    get_exchange_rate(Explorer.coin()) || get_native_coin_exchange_rate_from_db() || Token.null()
+    ExchangeRates.get_coin_exchange_rate() || get_native_coin_exchange_rate_from_db() || Token.null()
+  end
+
+  @doc """
+  Get most recent exchange rate for the secondary coin from DB.
+  """
+  @spec get_secondary_coin_exchange_rate() :: Token.t()
+  def get_secondary_coin_exchange_rate do
+    ExchangeRates.get_secondary_coin_exchange_rate() || get_native_coin_exchange_rate_from_db(true)
   end
 
   @doc false
@@ -71,7 +80,7 @@ defmodule Explorer.Market do
 
     Repo.insert_all(MarketHistory, records_without_zeroes,
       on_conflict: market_history_on_conflict(),
-      conflict_target: [:date]
+      conflict_target: [:date, :secondary_coin]
     )
   end
 
@@ -136,10 +145,5 @@ defmodule Explorer.Market do
           market_history.opening_price == 0 or is_nil(market_history.closing_price) or
           market_history.closing_price == 0
     )
-  end
-
-  @spec get_exchange_rate(String.t()) :: Token.t() | nil
-  defp get_exchange_rate(symbol) do
-    ExchangeRates.lookup(symbol)
   end
 end

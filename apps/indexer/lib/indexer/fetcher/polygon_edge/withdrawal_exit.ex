@@ -3,6 +3,8 @@ defmodule Indexer.Fetcher.PolygonEdge.WithdrawalExit do
   Fills polygon_edge_withdrawal_exits DB table.
   """
 
+  # todo: this module is deprecated and should be removed
+
   use GenServer
   use Indexer.Fetcher
 
@@ -10,7 +12,6 @@ defmodule Indexer.Fetcher.PolygonEdge.WithdrawalExit do
 
   import EthereumJSONRPC, only: [quantity_to_integer: 1]
 
-  alias Explorer.Chain.Events.Subscriber
   alias Explorer.Chain.PolygonEdge.WithdrawalExit
   alias Indexer.Fetcher.PolygonEdge
 
@@ -36,32 +37,32 @@ defmodule Indexer.Fetcher.PolygonEdge.WithdrawalExit do
 
   @impl GenServer
   def init(_args) do
+    {:ok, %{}, {:continue, :ok}}
+  end
+
+  @impl GenServer
+  def handle_continue(:ok, state) do
     Logger.metadata(fetcher: @fetcher_name)
 
     env = Application.get_all_env(:indexer)[__MODULE__]
 
-    Subscriber.to(:polygon_edge_reorg_block, :realtime)
-
-    PolygonEdge.init_l1(
-      WithdrawalExit,
-      env,
-      self(),
-      env[:exit_helper],
-      "Exit Helper",
-      "polygon_edge_withdrawal_exits",
-      "Withdrawals"
-    )
+    case PolygonEdge.init_l1(
+           WithdrawalExit,
+           env,
+           self(),
+           env[:exit_helper],
+           "Exit Helper",
+           "polygon_edge_withdrawal_exits",
+           "Withdrawals"
+         ) do
+      :ignore -> {:stop, :normal, state}
+      {:ok, new_state} -> {:noreply, new_state}
+    end
   end
 
   @impl GenServer
   def handle_info(:continue, state) do
-    PolygonEdge.handle_continue(state, @exit_processed_event, __MODULE__, @fetcher_name)
-  end
-
-  @impl GenServer
-  def handle_info({:chain_event, :polygon_edge_reorg_block, :realtime, block_number}, state) do
-    PolygonEdge.reorg_block_push(@fetcher_name, block_number)
-    {:noreply, state}
+    PolygonEdge.handle_continue(state, @exit_processed_event, __MODULE__)
   end
 
   @impl GenServer
@@ -80,5 +81,26 @@ defmodule Indexer.Fetcher.PolygonEdge.WithdrawalExit do
         success: quantity_to_integer(Enum.at(event["topics"], 2)) != 0
       }
     end)
+  end
+
+  @doc """
+    Returns L1 RPC URL for this module.
+  """
+  @spec l1_rpc_url() :: binary() | nil
+  def l1_rpc_url do
+    PolygonEdge.l1_rpc_url()
+  end
+
+  @doc """
+    Determines if `Indexer.Fetcher.RollupL1ReorgMonitor` module must be up
+    for this module.
+
+    ## Returns
+    - `true` if the reorg monitor must be active, `false` otherwise.
+  """
+  @spec requires_l1_reorg_monitor?() :: boolean()
+  def requires_l1_reorg_monitor? do
+    module_config = Application.get_all_env(:indexer)[__MODULE__]
+    not is_nil(module_config[:start_block_l1])
   end
 end

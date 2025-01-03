@@ -3,6 +3,7 @@ defmodule BlockScoutWeb.API.V2.SearchControllerTest do
 
   alias Explorer.Chain.{Address, Block}
   alias Explorer.Repo
+  alias Explorer.Tags.AddressTag
 
   setup do
     insert(:block)
@@ -171,10 +172,39 @@ defmodule BlockScoutWeb.API.V2.SearchControllerTest do
       assert item["is_verified_via_admin_panel"] == token.is_verified_via_admin_panel
     end
 
-    test "search transaction", %{conn: conn} do
-      tx = insert(:transaction)
+    test "search token by hash", %{conn: conn} do
+      token = insert(:unique_token)
 
-      request = get(conn, "/api/v2/search?q=#{tx.hash}")
+      request = get(conn, "/api/v2/search?q=#{token.contract_address_hash}")
+      assert response = json_response(request, 200)
+
+      assert Enum.count(response["items"]) == 2
+      assert response["next_page_params"] == nil
+
+      item = Enum.at(response["items"], 0)
+
+      assert item["type"] == "token"
+      assert item["name"] == token.name
+      assert item["symbol"] == token.symbol
+      assert item["address"] == Address.checksum(token.contract_address_hash)
+      assert item["token_url"] =~ Address.checksum(token.contract_address_hash)
+      assert item["address_url"] =~ Address.checksum(token.contract_address_hash)
+      assert item["token_type"] == token.type
+      assert item["is_smart_contract_verified"] == token.contract_address.verified
+      assert item["exchange_rate"] == (token.fiat_value && to_string(token.fiat_value))
+      assert item["total_supply"] == to_string(token.total_supply)
+      assert item["icon_url"] == token.icon_url
+      assert item["is_verified_via_admin_panel"] == token.is_verified_via_admin_panel
+
+      item_1 = Enum.at(response["items"], 1)
+
+      assert item_1["type"] == "address"
+    end
+
+    test "search transaction", %{conn: conn} do
+      transaction = insert(:transaction, block_timestamp: nil)
+
+      request = get(conn, "/api/v2/search?q=#{transaction.hash}")
       assert response = json_response(request, 200)
 
       assert Enum.count(response["items"]) == 1
@@ -183,15 +213,15 @@ defmodule BlockScoutWeb.API.V2.SearchControllerTest do
       item = Enum.at(response["items"], 0)
 
       assert item["type"] == "transaction"
-      assert item["tx_hash"] == to_string(tx.hash)
-      assert item["url"] =~ to_string(tx.hash)
+      assert item["transaction_hash"] == to_string(transaction.hash)
+      assert item["url"] =~ to_string(transaction.hash)
       assert item["timestamp"] == nil
     end
 
     test "search transaction with timestamp", %{conn: conn} do
-      tx = :transaction |> insert() |> with_block()
+      transaction = :transaction |> insert() |> with_block()
 
-      request = get(conn, "/api/v2/search?q=#{tx.hash}")
+      request = get(conn, "/api/v2/search?q=#{transaction.hash}")
       assert response = json_response(request, 200)
 
       assert Enum.count(response["items"]) == 1
@@ -200,9 +230,11 @@ defmodule BlockScoutWeb.API.V2.SearchControllerTest do
       item = Enum.at(response["items"], 0)
 
       assert item["type"] == "transaction"
-      assert item["tx_hash"] == to_string(tx.hash)
-      assert item["url"] =~ to_string(tx.hash)
-      assert item["timestamp"] == Repo.preload(tx, [:block]).block.timestamp |> to_string() |> String.replace(" ", "T")
+      assert item["transaction_hash"] == to_string(transaction.hash)
+      assert item["url"] =~ to_string(transaction.hash)
+
+      assert item["timestamp"] ==
+               Repo.preload(transaction, [:block]).block.timestamp |> to_string() |> String.replace(" ", "T")
     end
 
     test "search tags", %{conn: conn} do
@@ -221,6 +253,44 @@ defmodule BlockScoutWeb.API.V2.SearchControllerTest do
       assert item["name"] == tag.tag.display_name
       assert item["url"] =~ Address.checksum(tag.address.hash)
       assert item["is_smart_contract_verified"] == tag.address.verified
+    end
+
+    test "check that simultaneous search of ", %{conn: conn} do
+      block = insert(:block)
+
+      insert(:smart_contract, name: to_string(block.number))
+      insert(:token, name: to_string(block.number))
+
+      insert(:address_to_tag,
+        tag: %AddressTag{
+          label: "qwerty",
+          display_name: to_string(block.number)
+        }
+      )
+
+      request = get(conn, "/api/v2/search?q=#{block.number}")
+      assert response = json_response(request, 200)
+
+      assert Enum.count(response["items"]) == 4
+      assert response["next_page_params"] == nil
+    end
+
+    test "search for a big positive integer", %{conn: conn} do
+      big_integer = :math.pow(2, 64) |> round |> :erlang.integer_to_binary()
+      request = get(conn, "/api/v2/search?q=#{big_integer}")
+      assert response = json_response(request, 200)
+
+      assert Enum.count(response["items"]) == 0
+      assert response["next_page_params"] == nil
+    end
+
+    test "search for a big negative integer", %{conn: conn} do
+      big_integer = (:math.pow(2, 64) - 1) |> round |> :erlang.integer_to_binary()
+      request = get(conn, "/api/v2/search?q=#{big_integer}")
+      assert response = json_response(request, 200)
+
+      assert Enum.count(response["items"]) == 0
+      assert response["next_page_params"] == nil
     end
   end
 

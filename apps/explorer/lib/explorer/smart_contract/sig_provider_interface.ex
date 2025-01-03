@@ -3,14 +3,14 @@ defmodule Explorer.SmartContract.SigProviderInterface do
     Adapter for decoding events and function calls with https://github.com/blockscout/blockscout-rs/tree/main/sig-provider
   """
 
-  alias Explorer.Utility.RustService
+  alias Explorer.Utility.Microservice
   alias HTTPoison.Response
   require Logger
 
   @request_error_msg "Error while sending request to sig-provider"
 
   def decode_function_call(input) do
-    base_url = tx_input_decode_url()
+    base_url = transaction_input_decode_url()
 
     url =
       base_url
@@ -74,14 +74,14 @@ defmodule Explorer.SmartContract.SigProviderInterface do
 
   def process_sig_provider_response(other_responses), do: {:error, other_responses}
 
-  def tx_input_decode_url, do: "#{base_api_url()}" <> "/function"
+  def transaction_input_decode_url, do: "#{base_api_url()}" <> "/function"
 
   def event_decode_url, do: "#{base_api_url()}" <> "/event"
 
   def base_api_url, do: "#{base_url()}" <> "/api/v1/abi"
 
   def base_url do
-    RustService.base_url(__MODULE__)
+    Microservice.base_url(__MODULE__)
   end
 
   def enabled?, do: Application.get_env(:explorer, __MODULE__)[:enabled]

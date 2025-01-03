@@ -2,11 +2,22 @@ defmodule BlockScoutWeb.API.V2.SearchController do
   use Phoenix.Controller
 
   import BlockScoutWeb.Chain, only: [paging_options: 1, next_page_params: 3, split_list_by_page: 1, from_param: 1]
+  import Explorer.MicroserviceInterfaces.BENS, only: [maybe_preload_ens_info_to_search_results: 1]
 
   alias Explorer.Chain.Search
   alias Explorer.PagingOptions
 
   @api_true [api?: true]
+  @min_query_length 3
+
+  def search(conn, %{"q" => query}) when byte_size(query) < @min_query_length do
+    conn
+    |> put_status(200)
+    |> render(:search_results, %{
+      search_results: [],
+      next_page_params: nil
+    })
+  end
 
   def search(conn, %{"q" => query} = params) do
     [paging_options: paging_options] = paging_options(params)
@@ -22,7 +33,16 @@ defmodule BlockScoutWeb.API.V2.SearchController do
 
     conn
     |> put_status(200)
-    |> render(:search_results, %{search_results: search_results, next_page_params: next_page_params})
+    |> render(:search_results, %{
+      search_results: search_results |> maybe_preload_ens_info_to_search_results(),
+      next_page_params: next_page_params
+    })
+  end
+
+  def check_redirect(conn, %{"q" => query}) when byte_size(query) < @min_query_length do
+    conn
+    |> put_status(200)
+    |> render(:search_results, %{result: {:error, :not_found}})
   end
 
   def check_redirect(conn, %{"q" => query}) do
@@ -36,11 +56,17 @@ defmodule BlockScoutWeb.API.V2.SearchController do
     |> render(:search_results, %{result: result})
   end
 
+  def quick_search(conn, %{"q" => query}) when byte_size(query) < @min_query_length do
+    conn
+    |> put_status(200)
+    |> render(:search_results, %{search_results: []})
+  end
+
   def quick_search(conn, %{"q" => query}) do
     search_results = Search.balanced_unpaginated_search(%PagingOptions{page_size: 50}, query, @api_true)
 
     conn
     |> put_status(200)
-    |> render(:search_results, %{search_results: search_results})
+    |> render(:search_results, %{search_results: search_results |> maybe_preload_ens_info_to_search_results()})
   end
 end

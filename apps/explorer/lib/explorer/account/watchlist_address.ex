@@ -7,7 +7,7 @@ defmodule Explorer.Account.WatchlistAddress do
 
   import Ecto.Changeset
 
-  alias Ecto.Changeset
+  alias Ecto.{Changeset, Multi}
   alias Explorer.Account.Notifier.ForbiddenAddress
   alias Explorer.Account.Watchlist
   alias Explorer.{Chain, PagingOptions, Repo}
@@ -15,22 +15,25 @@ defmodule Explorer.Account.WatchlistAddress do
 
   import Explorer.Chain, only: [hash_to_lower_case_string: 1]
 
-  schema "account_watchlist_addresses" do
-    field(:address_hash_hash, Cloak.Ecto.SHA256)
-    field(:name, Explorer.Encrypted.Binary)
-    field(:address_hash, Explorer.Encrypted.AddressHash)
+  typed_schema "account_watchlist_addresses" do
+    field(:address_hash_hash, Cloak.Ecto.SHA256) :: binary() | nil
+    field(:name, Explorer.Encrypted.Binary, null: false)
+    field(:address_hash, Explorer.Encrypted.AddressHash, null: false)
+    field(:user_created, :boolean, null: false, default: true)
 
-    belongs_to(:watchlist, Watchlist)
+    belongs_to(:watchlist, Watchlist, null: false)
 
-    field(:watch_coin_input, :boolean, default: true)
-    field(:watch_coin_output, :boolean, default: true)
-    field(:watch_erc_20_input, :boolean, default: true)
-    field(:watch_erc_20_output, :boolean, default: true)
-    field(:watch_erc_721_input, :boolean, default: true)
-    field(:watch_erc_721_output, :boolean, default: true)
-    field(:watch_erc_1155_input, :boolean, default: true)
-    field(:watch_erc_1155_output, :boolean, default: true)
-    field(:notify_email, :boolean, default: true)
+    field(:watch_coin_input, :boolean, default: true, null: false)
+    field(:watch_coin_output, :boolean, default: true, null: false)
+    field(:watch_erc_20_input, :boolean, default: true, null: false)
+    field(:watch_erc_20_output, :boolean, default: true, null: false)
+    field(:watch_erc_721_input, :boolean, default: true, null: false)
+    field(:watch_erc_721_output, :boolean, default: true, null: false)
+    field(:watch_erc_1155_input, :boolean, default: true, null: false)
+    field(:watch_erc_1155_output, :boolean, default: true, null: false)
+    field(:watch_erc_404_input, :boolean, default: true, null: false)
+    field(:watch_erc_404_output, :boolean, default: true, null: false)
+    field(:notify_email, :boolean, default: true, null: false)
     field(:notify_epns, :boolean)
     field(:notify_feed, :boolean)
     field(:notify_inapp, :boolean)
@@ -43,7 +46,7 @@ defmodule Explorer.Account.WatchlistAddress do
     timestamps()
   end
 
-  @attrs ~w(name address_hash watch_coin_input watch_coin_output watch_erc_20_input watch_erc_20_output watch_erc_721_input watch_erc_721_output watch_erc_1155_input watch_erc_1155_output notify_email notify_epns notify_feed notify_inapp watchlist_id)a
+  @attrs ~w(name address_hash watch_coin_input watch_coin_output watch_erc_20_input watch_erc_20_output watch_erc_721_input watch_erc_721_output watch_erc_1155_input watch_erc_1155_output watch_erc_404_input watch_erc_404_output notify_email notify_epns notify_feed notify_inapp watchlist_id)a
 
   def changeset do
     %__MODULE__{}
@@ -66,8 +69,9 @@ defmodule Explorer.Account.WatchlistAddress do
   end
 
   defp put_hashed_fields(changeset) do
+    # Using force_change instead of put_change due to https://github.com/danielberkompas/cloak_ecto/issues/53
     changeset
-    |> put_change(:address_hash_hash, hash_to_lower_case_string(get_field(changeset, :address_hash)))
+    |> force_change(:address_hash_hash, hash_to_lower_case_string(get_field(changeset, :address_hash)))
   end
 
   def create(attrs) do
@@ -109,9 +113,6 @@ defmodule Explorer.Account.WatchlistAddress do
     else
       {:error, reason} ->
         add_error(changeset, :address_hash, reason)
-
-      _ ->
-        add_error(changeset, :address_hash, "Address error")
     end
   end
 
@@ -131,12 +132,18 @@ defmodule Explorer.Account.WatchlistAddress do
   def get_watchlist_addresses_by_watchlist_id(watchlist_id, options) when not is_nil(watchlist_id) do
     paging_options = Keyword.get(options, :paging_options, Chain.default_paging_options())
 
-    watchlist_id
-    |> watchlist_addresses_by_watchlist_id_query()
-    |> order_by([wla], desc: wla.id)
-    |> page_watchlist_address(paging_options)
-    |> limit(^paging_options.page_size)
-    |> Repo.account_repo().all()
+    case paging_options do
+      %PagingOptions{key: {0}} ->
+        []
+
+      _ ->
+        watchlist_id
+        |> watchlist_addresses_by_watchlist_id_query()
+        |> order_by([wla], desc: wla.id)
+        |> page_watchlist_address(paging_options)
+        |> limit(^paging_options.page_size)
+        |> Repo.account_repo().all()
+    end
   end
 
   def get_watchlist_addresses_by_watchlist_id(_, _), do: []
@@ -203,4 +210,54 @@ defmodule Explorer.Account.WatchlistAddress do
   end
 
   def preload_address_fetched_coin_balance(watchlist), do: watchlist
+
+  @doc """
+  Merges watchlist addresses into a primary watchlist.
+
+  This function is used to merge multiple watchlists into a single primary watchlist. It updates
+  the `watchlist_id` of all addresses belonging to the watchlists being merged to point to the
+  primary watchlist.
+
+  ## Parameters
+
+    * `multi` - An `Ecto.Multi` struct representing the current multi-operation transaction.
+
+  ## Returns
+
+  Returns an updated `Ecto.Multi` struct with an additional `:merge_watchlist_addresses` operation.
+
+  ## Operation Details
+
+  The function adds a `:merge_watchlist_addresses` operation to the `Ecto.Multi` struct. This operation:
+
+  1. Identifies the primary watchlist and the watchlists to be merged from the results of previous operations.
+  2. Updates all watchlist addresses associated with the watchlists being merged:
+     - Sets their `watchlist_id` to the ID of the primary watchlist.
+     - Sets their `user_created` flag to `false`.
+
+  ## Notes
+
+  - This function assumes that the `Explorer.Account.Watchlist.acquire_for_merge/3` function has been called previously in the
+    `Ecto.Multi` chain to provide the necessary data for the merge operation.
+  - After this operation, all addresses from the merged watchlists will be associated with the
+    primary watchlist, and their `user_created` status will be set to `false`.
+  """
+  @spec merge(Multi.t()) :: Multi.t()
+  def merge(multi) do
+    multi
+    |> Multi.run(:merge_watchlist_addresses, fn repo,
+                                                %{
+                                                  acquire_primary_watchlist: [primary_watchlist | _],
+                                                  acquire_watchlists_to_merge: watchlists_to_merge
+                                                } ->
+      primary_watchlist_id = primary_watchlist.id
+      watchlists_to_merge_ids = Enum.map(watchlists_to_merge, & &1.id)
+
+      {:ok,
+       repo.update_all(
+         from(key in __MODULE__, where: key.watchlist_id in ^watchlists_to_merge_ids),
+         set: [watchlist_id: primary_watchlist_id, user_created: false]
+       )}
+    end)
+  end
 end

@@ -38,6 +38,33 @@ defmodule BlockScoutWeb.AddressChannel do
   @burn_address_hash burn_address_hash
   @current_token_balances_limit 50
 
+  case Application.compile_env(:explorer, :chain_type) do
+    :celo ->
+      @chain_type_transaction_associations [
+        :gas_token
+      ]
+
+    _ ->
+      @chain_type_transaction_associations []
+  end
+
+  @transaction_associations [
+                              from_address: [:scam_badge, :names, :smart_contract, :proxy_implementations],
+                              to_address: [
+                                :scam_badge,
+                                :names,
+                                :smart_contract,
+                                :proxy_implementations
+                              ],
+                              created_contract_address: [
+                                :scam_badge,
+                                :names,
+                                :smart_contract,
+                                :proxy_implementations
+                              ]
+                            ] ++
+                              @chain_type_transaction_associations
+
   def join("addresses:" <> address_hash, _params, socket) do
     {:ok, %{}, assign(socket, :address_hash, address_hash)}
   end
@@ -146,6 +173,7 @@ defmodule BlockScoutWeb.AddressChannel do
     {:noreply, socket}
   end
 
+  # TODO: fix or remove, "internal_transaction.json" clause does not exist
   def handle_out(
         "internal_transaction",
         %{address: _address, internal_transaction: internal_transaction},
@@ -193,11 +221,13 @@ defmodule BlockScoutWeb.AddressChannel do
       ) do
     coin_balance = Chain.get_coin_balance(socket.assigns.address_hash, block_number)
 
-    rendered_coin_balance = AddressViewAPI.render("coin_balance.json", %{coin_balance: coin_balance})
+    if coin_balance.value && coin_balance.delta do
+      rendered_coin_balance = AddressViewAPI.render("coin_balance.json", %{coin_balance: coin_balance})
 
-    push(socket, "coin_balance", %{coin_balance: rendered_coin_balance})
+      push(socket, "coin_balance", %{coin_balance: rendered_coin_balance})
 
-    push_current_coin_balance(socket, block_number, coin_balance)
+      push_current_coin_balance(socket, block_number, coin_balance)
+    end
 
     {:noreply, socket}
   end
@@ -207,19 +237,21 @@ defmodule BlockScoutWeb.AddressChannel do
 
     Gettext.put_locale(BlockScoutWeb.Gettext, socket.assigns.locale)
 
-    rendered_coin_balance =
-      View.render_to_string(
-        AddressCoinBalanceView,
-        "_coin_balances.html",
-        conn: socket,
-        coin_balance: coin_balance
-      )
+    if coin_balance.value && coin_balance.delta do
+      rendered_coin_balance =
+        View.render_to_string(
+          AddressCoinBalanceView,
+          "_coin_balances.html",
+          conn: socket,
+          coin_balance: coin_balance
+        )
 
-    push(socket, "coin_balance", %{
-      coin_balance_html: rendered_coin_balance
-    })
+      push(socket, "coin_balance", %{
+        coin_balance_html: rendered_coin_balance
+      })
 
-    push_current_coin_balance(socket, block_number, coin_balance)
+      push_current_coin_balance(socket, block_number, coin_balance)
+    end
 
     {:noreply, socket}
   end
@@ -237,6 +269,7 @@ defmodule BlockScoutWeb.AddressChannel do
     push_current_token_balances(socket, address_current_token_balances, "erc_20", "ERC-20")
     push_current_token_balances(socket, address_current_token_balances, "erc_721", "ERC-721")
     push_current_token_balances(socket, address_current_token_balances, "erc_1155", "ERC-1155")
+    push_current_token_balances(socket, address_current_token_balances, "erc_404", "ERC-404")
 
     {:noreply, socket}
   end
@@ -246,7 +279,20 @@ defmodule BlockScoutWeb.AddressChannel do
   end
 
   defp push_current_token_balances(socket, address_current_token_balances, event_postfix, token_type) do
-    filtered_ctbs = address_current_token_balances |> Enum.filter(fn ctb -> ctb.token_type == token_type end)
+    filtered_ctbs =
+      address_current_token_balances
+      |> Enum.filter(fn ctb -> ctb.token_type == token_type end)
+      |> Enum.sort_by(
+        fn ctb ->
+          value =
+            if ctb.token.decimals,
+              do: Decimal.div(ctb.value, Decimal.new(Integer.pow(10, Decimal.to_integer(ctb.token.decimals)))),
+              else: ctb.value
+
+          {(ctb.token.fiat_value && Decimal.mult(value, ctb.token.fiat_value)) || Decimal.new(0), value}
+        end,
+        &sorter/2
+      )
 
     push(socket, "updated_token_balances_" <> event_postfix, %{
       token_balances:
@@ -255,6 +301,15 @@ defmodule BlockScoutWeb.AddressChannel do
         }),
       overflow: Enum.count(filtered_ctbs) > @current_token_balances_limit
     })
+  end
+
+  defp sorter({fiat_value_1, value_1}, {fiat_value_2, value_2}) do
+    case {Decimal.compare(fiat_value_1, fiat_value_2), Decimal.compare(value_1, value_2)} do
+      {:gt, _} -> true
+      {:eq, :gt} -> true
+      {:eq, :eq} -> true
+      _ -> false
+    end
   end
 
   def push_current_coin_balance(
@@ -303,7 +358,13 @@ defmodule BlockScoutWeb.AddressChannel do
         event
       )
       when is_list(transactions) do
-    transaction_json = TransactionViewAPI.render("transactions.json", %{transactions: transactions, conn: nil})
+    transaction_json =
+      TransactionViewAPI.render("transactions.json", %{
+        transactions:
+          transactions
+          |> Repo.preload(@transaction_associations),
+        conn: nil
+      })
 
     push(socket, event, %{transactions: transaction_json})
 
@@ -348,7 +409,17 @@ defmodule BlockScoutWeb.AddressChannel do
       )
       when is_list(token_transfers) do
     token_transfer_json =
-      TransactionViewAPI.render("token_transfers.json", %{token_transfers: token_transfers, conn: nil})
+      TransactionViewAPI.render("token_transfers.json", %{
+        token_transfers:
+          token_transfers
+          |> Repo.preload([
+            [
+              from_address: [:scam_badge, :names, :smart_contract, :proxy_implementations],
+              to_address: [:scam_badge, :names, :smart_contract, :proxy_implementations]
+            ]
+          ]),
+        conn: nil
+      })
 
     push(socket, event, %{token_transfers: token_transfer_json})
 

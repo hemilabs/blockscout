@@ -15,8 +15,9 @@ config :explorer,
       url: System.get_env("ETHEREUM_JSONRPC_HTTP_URL") || "http://localhost:8545",
       fallback_url: System.get_env("ETHEREUM_JSONRPC_FALLBACK_HTTP_URL"),
       fallback_trace_url: System.get_env("ETHEREUM_JSONRPC_FALLBACK_TRACE_URL"),
+      fallback_eth_call_url: System.get_env("ETHEREUM_JSONRPC_FALLBACK_ETH_CALL_URL"),
       method_to_url: [
-        eth_call: System.get_env("ETHEREUM_JSONRPC_TRACE_URL") || "http://localhost:8545",
+        eth_call: ConfigHelper.eth_call_url("http://localhost:8545"),
         eth_getBalance: System.get_env("ETHEREUM_JSONRPC_TRACE_URL") || "http://localhost:8545",
         trace_replayTransaction: System.get_env("ETHEREUM_JSONRPC_TRACE_URL") || "http://localhost:8545"
       ],
@@ -28,7 +29,8 @@ config :explorer,
     transport: EthereumJSONRPC.WebSocket,
     transport_options: [
       web_socket: EthereumJSONRPC.WebSocket.WebSocketClient,
-      url: System.get_env("ETHEREUM_JSONRPC_WS_URL")
+      url: System.get_env("ETHEREUM_JSONRPC_WS_URL"),
+      fallback_url: System.get_env("ETHEREUM_JSONRPC_FALLBACK_WS_URL")
     ],
     variant: EthereumJSONRPC.Erigon
   ]

@@ -11,7 +11,7 @@
     </url>
   <% end %>
 
-  <% addresses = Chain.list_top_addresses(params) %>
+  <% addresses = Address.list_top_addresses(params) %>
   <%= for {address, _} <- addresses do %>
     <url>
       <loc><%= host %>/address/<%= to_string(address) %></loc>
@@ -19,10 +19,10 @@
     </url>
   <% end %>
 
-  <% txs = Chain.recent_transactions(params, [:validated]) %>
-  <%= for tx <- txs do %>
+  <% transactions = Chain.recent_transactions(params, [:validated]) %>
+  <%= for transaction <- transactions do %>
     <url>
-      <loc><%= host %>/tx/<%= to_string(tx.hash) %></loc>
+      <loc><%= host %>/tx/<%= to_string(transaction.hash) %></loc>
       <lastmod><%= date %></lastmod>
     </url>
   <% end %>
@@ -35,7 +35,7 @@
     </url>
   <% end %>
 
-  <% tokens = Chain.list_top_tokens(nil, params) %>
+  <% tokens = Token.list_top(nil, params) %>
   <%= for token <- tokens do %>
     <url>
       <loc><%= host %>/token/<%= to_string(token.contract_address_hash) %></loc>

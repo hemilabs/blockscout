@@ -60,3 +60,9 @@ dump.rdb
 .vscode
 
 **.dec**
+
+*.env
+*.env.example
+*.env.local
+*.env.staging
+.devcontainer/.blockscout_config

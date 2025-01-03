@@ -3,14 +3,17 @@ defmodule BlockScoutWeb.API.V2.SearchView do
 
   alias BlockScoutWeb.{BlockView, Endpoint}
   alias Explorer.Chain
-  alias Explorer.Chain.{Address, Block, Hash, Transaction}
+  alias Explorer.Chain.{Address, Beacon.Blob, Block, Hash, Transaction, UserOperation}
 
   def render("search_results.json", %{search_results: search_results, next_page_params: next_page_params}) do
-    %{"items" => Enum.map(search_results, &prepare_search_result/1), "next_page_params" => next_page_params}
+    %{
+      "items" => search_results |> Enum.map(&prepare_search_result/1) |> chain_type_fields(),
+      "next_page_params" => next_page_params
+    }
   end
 
   def render("search_results.json", %{search_results: search_results}) do
-    Enum.map(search_results, &prepare_search_result/1)
+    search_results |> Enum.map(&prepare_search_result/1) |> chain_type_fields()
   end
 
   def render("search_results.json", %{result: {:ok, result}}) do
@@ -36,18 +39,36 @@ defmodule BlockScoutWeb.API.V2.SearchView do
       "total_supply" => search_result.total_supply,
       "circulating_market_cap" =>
         search_result.circulating_market_cap && to_string(search_result.circulating_market_cap),
-      "is_verified_via_admin_panel" => search_result.is_verified_via_admin_panel
+      "is_verified_via_admin_panel" => search_result.is_verified_via_admin_panel,
+      "certified" => if(search_result.certified, do: search_result.certified, else: false),
+      "priority" => search_result.priority
     }
   end
 
-  def prepare_search_result(%{type: address_or_contract_or_label} = search_result)
-      when address_or_contract_or_label in ["address", "contract", "label"] do
+  def prepare_search_result(%{type: "contract"} = search_result) do
     %{
       "type" => search_result.type,
       "name" => search_result.name,
       "address" => search_result.address_hash,
       "url" => address_path(Endpoint, :show, search_result.address_hash),
-      "is_smart_contract_verified" => search_result.verified
+      "is_smart_contract_verified" => search_result.verified,
+      "ens_info" => search_result[:ens_info],
+      "certified" => if(search_result.certified, do: search_result.certified, else: false),
+      "priority" => search_result.priority
+    }
+  end
+
+  def prepare_search_result(%{type: address_or_contract_or_label} = search_result)
+      when address_or_contract_or_label in ["address", "label", "ens_domain"] do
+    %{
+      "type" => search_result.type,
+      "name" => search_result.name,
+      "address" => search_result.address_hash,
+      "url" => address_path(Endpoint, :show, search_result.address_hash),
+      "is_smart_contract_verified" => search_result.verified,
+      "ens_info" => search_result[:ens_info],
+      "certified" => if(search_result.certified, do: search_result.certified, else: false),
+      "priority" => search_result.priority
     }
   end
 
@@ -68,18 +89,44 @@ defmodule BlockScoutWeb.API.V2.SearchView do
       "block_hash" => block_hash,
       "url" => block_path(Endpoint, :show, block_hash),
       "timestamp" => search_result.timestamp,
-      "block_type" => block |> BlockView.block_type() |> String.downcase()
+      "block_type" => block |> BlockView.block_type() |> String.downcase(),
+      "priority" => search_result.priority
     }
   end
 
   def prepare_search_result(%{type: "transaction"} = search_result) do
-    tx_hash = hash_to_string(search_result.tx_hash)
+    transaction_hash = hash_to_string(search_result.transaction_hash)
 
     %{
       "type" => search_result.type,
-      "tx_hash" => tx_hash,
-      "url" => transaction_path(Endpoint, :show, tx_hash),
-      "timestamp" => search_result.timestamp
+      "transaction_hash" => transaction_hash,
+      # todo: keep next line for compatibility with frontend and remove when new frontend is bound to `transaction_hash` property
+      "tx_hash" => transaction_hash,
+      "url" => transaction_path(Endpoint, :show, transaction_hash),
+      "timestamp" => search_result.timestamp,
+      "priority" => search_result.priority
+    }
+  end
+
+  def prepare_search_result(%{type: "user_operation"} = search_result) do
+    user_operation_hash = hash_to_string(search_result.user_operation_hash)
+
+    %{
+      "type" => search_result.type,
+      "user_operation_hash" => user_operation_hash,
+      "timestamp" => search_result.timestamp,
+      "priority" => search_result.priority
+    }
+  end
+
+  def prepare_search_result(%{type: "blob"} = search_result) do
+    blob_hash = hash_to_string(search_result.blob_hash)
+
+    %{
+      "type" => search_result.type,
+      "blob_hash" => blob_hash,
+      "timestamp" => search_result.timestamp,
+      "priority" => search_result.priority
     }
   end
 
@@ -98,11 +145,36 @@ defmodule BlockScoutWeb.API.V2.SearchView do
     %{"type" => "address", "parameter" => Address.checksum(item.hash)}
   end
 
+  defp redirect_search_results(%{address_hash: address_hash}) do
+    %{"type" => "address", "parameter" => address_hash}
+  end
+
   defp redirect_search_results(%Block{} = item) do
     %{"type" => "block", "parameter" => to_string(item.hash)}
   end
 
   defp redirect_search_results(%Transaction{} = item) do
     %{"type" => "transaction", "parameter" => to_string(item.hash)}
+  end
+
+  defp redirect_search_results(%UserOperation{} = item) do
+    %{"type" => "user_operation", "parameter" => to_string(item.hash)}
+  end
+
+  defp redirect_search_results(%Blob{} = item) do
+    %{"type" => "blob", "parameter" => to_string(item.hash)}
+  end
+
+  case Application.compile_env(:explorer, :chain_type) do
+    :filecoin ->
+      defp chain_type_fields(result) do
+        # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+        BlockScoutWeb.API.V2.FilecoinView.preload_and_put_filecoin_robust_address_to_search_results(result)
+      end
+
+    _ ->
+      defp chain_type_fields(result) do
+        result
+      end
   end
 end

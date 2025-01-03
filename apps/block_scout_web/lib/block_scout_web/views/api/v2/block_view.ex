@@ -3,7 +3,6 @@ defmodule BlockScoutWeb.API.V2.BlockView do
 
   alias BlockScoutWeb.BlockView
   alias BlockScoutWeb.API.V2.{ApiView, Helper}
-  alias Explorer.Chain
   alias Explorer.Chain.Block
   alias Explorer.Counters.BlockPriorityFeeCounter
 
@@ -29,14 +28,16 @@ defmodule BlockScoutWeb.API.V2.BlockView do
   end
 
   def prepare_block(block, _conn, single_block? \\ false) do
-    burned_fee = Chain.burned_fees(block.transactions, block.base_fee_per_gas)
+    burnt_fees = Block.burnt_fees(block.transactions, block.base_fee_per_gas)
     priority_fee = block.base_fee_per_gas && BlockPriorityFeeCounter.fetch(block.hash)
 
-    tx_fees = Chain.txn_fees(block.transactions)
+    transaction_fees = Block.transaction_fees(block.transactions)
 
     %{
       "height" => block.number,
       "timestamp" => block.timestamp,
+      "transaction_count" => count_transactions(block),
+      # todo: keep next line for compatibility with frontend and remove when new frontend is bound to `transaction_count` property
       "tx_count" => count_transactions(block),
       "miner" => Helper.address_with_info(nil, block.miner, block.miner_hash, false),
       "size" => block.size,
@@ -48,19 +49,30 @@ defmodule BlockScoutWeb.API.V2.BlockView do
       "gas_limit" => block.gas_limit,
       "nonce" => block.nonce,
       "base_fee_per_gas" => block.base_fee_per_gas,
-      "burnt_fees" => burned_fee,
+      "burnt_fees" => burnt_fees,
       "priority_fee" => priority_fee,
       # "extra_data" => "TODO",
       "uncles_hashes" => prepare_uncles(block.uncle_relations),
       # "state_root" => "TODO",
       "rewards" => prepare_rewards(block.rewards, block, single_block?),
-      "gas_target_percentage" => gas_target(block),
-      "gas_used_percentage" => gas_used_percentage(block),
-      "burnt_fees_percentage" => burnt_fees_percentage(burned_fee, tx_fees),
+      "gas_target_percentage" => Block.gas_target(block),
+      "gas_used_percentage" => Block.gas_used_percentage(block),
+      "burnt_fees_percentage" => burnt_fees_percentage(burnt_fees, transaction_fees),
       "type" => block |> BlockView.block_type() |> String.downcase(),
-      "tx_fees" => tx_fees,
+      "transaction_fees" => transaction_fees,
+      # todo: keep next line for compatibility with frontend and remove when new frontend is bound to `transaction_fees` property
+      "tx_fees" => transaction_fees,
       "withdrawals_count" => count_withdrawals(block)
     }
+    |> chain_type_fields(block, single_block?)
+    |> add_optional_block_field(block, :btc_finality)
+  end
+
+  defp add_optional_block_field(result, block, field) do
+    case Map.get(block, field) do
+      nil -> result
+      value -> Map.put(result, Atom.to_string(field), value)
+    end
   end
 
   def prepare_rewards(rewards, block, single_block?) do
@@ -84,35 +96,77 @@ defmodule BlockScoutWeb.API.V2.BlockView do
     %{"hash" => uncle_relation.uncle_hash}
   end
 
-  def gas_target(block) do
-    if Decimal.compare(block.gas_limit, 0) == :gt do
-      elasticity_multiplier = Application.get_env(:explorer, :elasticity_multiplier)
-      ratio = Decimal.div(block.gas_used, Decimal.div(block.gas_limit, elasticity_multiplier))
-      ratio |> Decimal.sub(1) |> Decimal.mult(100) |> Decimal.to_float()
-    else
-      Decimal.new(0)
-    end
-  end
-
-  def gas_used_percentage(block) do
-    if Decimal.compare(block.gas_limit, 0) == :gt do
-      block.gas_used |> Decimal.div(block.gas_limit) |> Decimal.mult(100) |> Decimal.to_float()
-    else
-      Decimal.new(0)
-    end
-  end
-
   def burnt_fees_percentage(_, %Decimal{coef: 0}), do: nil
 
-  def burnt_fees_percentage(burnt_fees, tx_fees) when not is_nil(tx_fees) and not is_nil(burnt_fees) do
-    burnt_fees.value |> Decimal.div(tx_fees) |> Decimal.mult(100) |> Decimal.to_float()
+  def burnt_fees_percentage(burnt_fees, transaction_fees)
+      when not is_nil(transaction_fees) and not is_nil(burnt_fees) do
+    burnt_fees |> Decimal.div(transaction_fees) |> Decimal.mult(100) |> Decimal.to_float()
   end
 
   def burnt_fees_percentage(_, _), do: nil
 
-  def count_transactions(%Block{transactions: txs}) when is_list(txs), do: Enum.count(txs)
+  def count_transactions(%Block{transactions: transactions}) when is_list(transactions), do: Enum.count(transactions)
   def count_transactions(_), do: nil
 
   def count_withdrawals(%Block{withdrawals: withdrawals}) when is_list(withdrawals), do: Enum.count(withdrawals)
   def count_withdrawals(_), do: nil
+
+  case Application.compile_env(:explorer, :chain_type) do
+    :rsk ->
+      defp chain_type_fields(result, block, single_block?) do
+        if single_block? do
+          # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+          BlockScoutWeb.API.V2.RootstockView.extend_block_json_response(result, block)
+        else
+          result
+        end
+      end
+
+    :optimism ->
+      defp chain_type_fields(result, block, single_block?) do
+        if single_block? do
+          # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+          BlockScoutWeb.API.V2.OptimismView.extend_block_json_response(result, block)
+        else
+          result
+        end
+      end
+
+    :zksync ->
+      defp chain_type_fields(result, block, single_block?) do
+        if single_block? do
+          # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+          BlockScoutWeb.API.V2.ZkSyncView.extend_block_json_response(result, block)
+        else
+          result
+        end
+      end
+
+    :arbitrum ->
+      defp chain_type_fields(result, block, single_block?) do
+        if single_block? do
+          # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+          BlockScoutWeb.API.V2.ArbitrumView.extend_block_json_response(result, block)
+        else
+          result
+        end
+      end
+
+    :ethereum ->
+      defp chain_type_fields(result, block, single_block?) do
+        # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+        BlockScoutWeb.API.V2.EthereumView.extend_block_json_response(result, block, single_block?)
+      end
+
+    :celo ->
+      defp chain_type_fields(result, block, single_block?) do
+        # credo:disable-for-next-line Credo.Check.Design.AliasUsage
+        BlockScoutWeb.API.V2.CeloView.extend_block_json_response(result, block, single_block?)
+      end
+
+    _ ->
+      defp chain_type_fields(result, _block, _single_block?) do
+        result
+      end
+  end
 end

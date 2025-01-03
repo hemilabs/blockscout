@@ -5,13 +5,14 @@ defmodule Explorer.Application do
 
   use Application
 
-  alias Explorer.{Admin, TokenTransferTokenIdMigration}
+  alias Explorer.Admin
 
   alias Explorer.Chain.Cache.{
     Accounts,
     AddressesTabsCounters,
     AddressSum,
     AddressSumMinusBurnt,
+    BackgroundMigrations,
     Block,
     BlockNumber,
     Blocks,
@@ -56,6 +57,7 @@ defmodule Explorer.Application do
       Supervisor.child_spec({Task.Supervisor, name: Explorer.LookUpSmartContractSourcesTaskSupervisor},
         id: LookUpSmartContractSourcesTaskSupervisor
       ),
+      Supervisor.child_spec({Task.Supervisor, name: Explorer.WETHMigratorSupervisor}, id: WETHMigratorSupervisor),
       Explorer.SmartContract.SolcDownloader,
       Explorer.SmartContract.VyperDownloader,
       {Registry, keys: :duplicate, name: Registry.ChainEvents, id: Registry.ChainEvents},
@@ -63,6 +65,7 @@ defmodule Explorer.Application do
       Accounts,
       AddressSum,
       AddressSumMinusBurnt,
+      BackgroundMigrations,
       Block,
       BlockNumber,
       Blocks,
@@ -113,36 +116,89 @@ defmodule Explorer.Application do
         configure(Explorer.Counters.AddressTokenUsdSum),
         configure(Explorer.Counters.TokenHoldersCounter),
         configure(Explorer.Counters.TokenTransfersCounter),
-        configure(Explorer.Counters.BlockBurnedFeeCounter),
+        configure(Explorer.Counters.BlockBurntFeeCounter),
         configure(Explorer.Counters.BlockPriorityFeeCounter),
         configure(Explorer.Counters.AverageBlockTime),
-        configure(Explorer.Counters.Bridge),
+        configure(Explorer.Counters.LastOutputRootSizeCounter),
+        configure(Explorer.Counters.FreshPendingTransactionsCounter),
+        configure(Explorer.Counters.Transactions24hStats),
         configure(Explorer.Validator.MetadataProcessor),
         configure(Explorer.Tags.AddressTag.Cataloger),
+        configure(Explorer.SmartContract.CertifiedSmartContractCataloger),
         configure(MinMissingBlockNumber),
-        configure(TokenTransferTokenIdMigration.Supervisor),
         configure(Explorer.Chain.Fetcher.CheckBytecodeMatchingOnDemand),
         configure(Explorer.Chain.Fetcher.FetchValidatorInfoOnDemand),
         configure(Explorer.TokenInstanceOwnerAddressMigration.Supervisor),
         sc_microservice_configure(Explorer.Chain.Fetcher.LookUpSmartContractSourcesOnDemand),
-        configure(Explorer.Chain.Cache.RootstockLockedBTC)
+        configure(Explorer.Chain.Cache.RootstockLockedBTC),
+        configure(Explorer.Chain.Cache.OptimismFinalizationPeriod),
+        configure(Explorer.Migrator.TransactionsDenormalization),
+        configure(Explorer.Migrator.AddressCurrentTokenBalanceTokenType),
+        configure(Explorer.Migrator.AddressTokenBalanceTokenType),
+        configure(Explorer.Migrator.SanitizeMissingBlockRanges),
+        configure(Explorer.Migrator.SanitizeIncorrectNFTTokenTransfers),
+        configure(Explorer.Migrator.TokenTransferTokenType),
+        configure(Explorer.Migrator.SanitizeIncorrectWETHTokenTransfers),
+        configure(Explorer.Migrator.TransactionBlockConsensus),
+        configure(Explorer.Migrator.TokenTransferBlockConsensus),
+        configure(Explorer.Migrator.RestoreOmittedWETHTransfers),
+        configure(Explorer.Migrator.FilecoinPendingAddressOperations),
+        configure_mode_dependent_process(Explorer.Migrator.ShrinkInternalTransactions, :indexer),
+        configure_chain_type_dependent_process(Explorer.Chain.Cache.BlackfortValidatorsCounters, :blackfort),
+        configure_chain_type_dependent_process(Explorer.Chain.Cache.StabilityValidatorsCounters, :stability),
+        Explorer.Migrator.SanitizeDuplicatedLogIndexLogs
+        |> configure()
+        |> configure_chain_type_dependent_process([
+          :polygon_zkevm,
+          :rsk,
+          :filecoin
+        ]),
+        configure_mode_dependent_process(Explorer.Migrator.SanitizeMissingTokenBalances, :indexer),
+        configure_mode_dependent_process(Explorer.Migrator.SanitizeReplacedTransactions, :indexer),
+        configure_mode_dependent_process(Explorer.Migrator.ReindexInternalTransactionsWithIncompatibleStatus, :indexer),
+        Explorer.Migrator.RefetchContractCodes |> configure() |> configure_chain_type_dependent_process(:zksync)
       ]
       |> List.flatten()
 
-    repos_by_chain_type() ++ account_repo() ++ configurable_children_set
+    repos_by_chain_type() ++ account_repo() ++ mud_repo() ++ configurable_children_set
   end
 
   defp repos_by_chain_type do
     if Mix.env() == :test do
-      [Explorer.Repo.PolygonEdge, Explorer.Repo.PolygonZkevm, Explorer.Repo.RSK, Explorer.Repo.Suave]
+      [
+        Explorer.Repo.Beacon,
+        Explorer.Repo.Optimism,
+        Explorer.Repo.PolygonEdge,
+        Explorer.Repo.PolygonZkevm,
+        Explorer.Repo.Scroll,
+        Explorer.Repo.ZkSync,
+        Explorer.Repo.Celo,
+        Explorer.Repo.RSK,
+        Explorer.Repo.Shibarium,
+        Explorer.Repo.Suave,
+        Explorer.Repo.Arbitrum,
+        Explorer.Repo.BridgedTokens,
+        Explorer.Repo.Filecoin,
+        Explorer.Repo.Stability,
+        Explorer.Repo.ShrunkInternalTransactions,
+        Explorer.Repo.Blackfort
+      ]
     else
       []
     end
   end
 
   defp account_repo do
-    if System.get_env("ACCOUNT_DATABASE_URL") || Mix.env() == :test do
+    if Application.get_env(:explorer, Explorer.Account)[:enabled] || Mix.env() == :test do
       [Explorer.Repo.Account]
+    else
+      []
+    end
+  end
+
+  defp mud_repo do
+    if Application.get_env(:explorer, Explorer.Chain.Mud)[:enabled] || Mix.env() == :test do
+      [Explorer.Repo.Mud]
     else
       []
     end
@@ -154,6 +210,30 @@ defmodule Explorer.Application do
 
   defp configure(process) do
     if should_start?(process) do
+      process
+    else
+      []
+    end
+  end
+
+  defp configure_chain_type_dependent_process(process, chain_types) when is_list(chain_types) do
+    if Application.get_env(:explorer, :chain_type) in chain_types do
+      process
+    else
+      []
+    end
+  end
+
+  defp configure_chain_type_dependent_process(process, chain_type) do
+    if Application.get_env(:explorer, :chain_type) == chain_type do
+      process
+    else
+      []
+    end
+  end
+
+  defp configure_mode_dependent_process(process, mode) do
+    if should_start?(process) and Application.get_env(:explorer, :mode) in [mode, :all] do
       process
     else
       []

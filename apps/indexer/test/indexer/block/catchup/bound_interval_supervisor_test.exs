@@ -11,9 +11,9 @@ defmodule Indexer.Block.Catchup.BoundIntervalSupervisorTest do
   alias Indexer.BoundInterval
   alias Indexer.Block.Catchup
   alias Indexer.Block.Catchup.MissingRangesCollector
+  alias Indexer.Fetcher.CoinBalance.Catchup, as: CoinBalanceCatchup
 
   alias Indexer.Fetcher.{
-    CoinBalance,
     ContractCode,
     InternalTransaction,
     ReplacedTransaction,
@@ -34,6 +34,8 @@ defmodule Indexer.Block.Catchup.BoundIntervalSupervisorTest do
     setup do
       initial_env = Application.get_env(:indexer, :block_ranges)
       on_exit(fn -> Application.put_env(:indexer, :block_ranges, initial_env) end)
+
+      set_celo_core_contracts_env_var()
     end
 
     # See https://github.com/poanetwork/blockscout/issues/597
@@ -228,7 +230,7 @@ defmodule Indexer.Block.Catchup.BoundIntervalSupervisorTest do
       previous_batch_block_number = first_catchup_block_number - default_blocks_batch_size
 
       Application.put_env(:indexer, :block_ranges, "#{previous_batch_block_number}..#{first_catchup_block_number}")
-      CoinBalance.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
+      CoinBalanceCatchup.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
       InternalTransaction.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
       ContractCode.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
       Token.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
@@ -388,7 +390,7 @@ defmodule Indexer.Block.Catchup.BoundIntervalSupervisorTest do
 
       assert :ok = Supervisor.terminate_child(pid, :task)
 
-      assert_receive {:DOWN, ^reference, :process, ^child_pid, :shutdown}
+      assert_receive {:DOWN, ^reference, :process, ^child_pid, :normal}
     end
 
     test "with other child_id returns {:error, :not_found}", %{pid: pid} do
@@ -416,6 +418,9 @@ defmodule Indexer.Block.Catchup.BoundIntervalSupervisorTest do
     setup context do
       initial_env = Application.get_env(:indexer, :block_ranges)
       on_exit(fn -> Application.put_env(:indexer, :block_ranges, initial_env) end)
+
+      set_celo_core_contracts_env_var()
+
       # force to use `Mox`, so we can manipulate `latest_block_number`
       put_in(context.json_rpc_named_arguments[:transport], EthereumJSONRPC.Mox)
     end
@@ -431,7 +436,7 @@ defmodule Indexer.Block.Catchup.BoundIntervalSupervisorTest do
 
       MissingRangesCollector.start_link([])
       start_supervised!({Task.Supervisor, name: Indexer.Block.Catchup.TaskSupervisor})
-      CoinBalance.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
+      CoinBalanceCatchup.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
       ContractCode.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
       InternalTransaction.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
       Token.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
@@ -523,7 +528,7 @@ defmodule Indexer.Block.Catchup.BoundIntervalSupervisorTest do
       Application.put_env(:indexer, :block_ranges, "0..0")
       MissingRangesCollector.start_link([])
       start_supervised({Task.Supervisor, name: Indexer.Block.Catchup.TaskSupervisor})
-      CoinBalance.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
+      CoinBalanceCatchup.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
       InternalTransaction.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
       ContractCode.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
       Token.Supervisor.Case.start_supervised!(json_rpc_named_arguments: json_rpc_named_arguments)
@@ -591,5 +596,29 @@ defmodule Indexer.Block.Catchup.BoundIntervalSupervisorTest do
       )
 
     {:ok, %{pid: pid}}
+  end
+
+  defp set_celo_core_contracts_env_var do
+    Application.put_env(:explorer, Explorer.Chain.Cache.CeloCoreContracts,
+      contracts: %{
+        "addresses" => %{
+          "Accounts" => [],
+          "Election" => [],
+          "EpochRewards" => [],
+          "FeeHandler" => [],
+          "GasPriceMinimum" => [],
+          "GoldToken" => [],
+          "Governance" => [],
+          "LockedGold" => [],
+          "Reserve" => [],
+          "StableToken" => [],
+          "Validators" => []
+        }
+      }
+    )
+
+    on_exit(fn ->
+      Application.put_env(:explorer, Explorer.Chain.Cache.CeloCoreContracts, contracts: %{})
+    end)
   end
 end

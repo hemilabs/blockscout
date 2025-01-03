@@ -8,6 +8,7 @@ defmodule BlockScoutWeb.TransactionInternalTransactionController do
 
   alias BlockScoutWeb.{AccessHelper, Controller, InternalTransactionView, TransactionController}
   alias Explorer.{Chain, Market}
+  alias Explorer.Chain.{DenormalizationHelper, InternalTransaction}
   alias Phoenix.View
 
   def index(conn, %{"transaction_id" => transaction_hash_string, "type" => "JSON"} = params) do
@@ -17,22 +18,22 @@ defmodule BlockScoutWeb.TransactionInternalTransactionController do
          {:ok, false} <- AccessHelper.restricted_access?(to_string(transaction.from_address_hash), params),
          {:ok, false} <- AccessHelper.restricted_access?(to_string(transaction.to_address_hash), params) do
       full_options =
-        Keyword.merge(
-          [
-            necessity_by_association: %{
-              [created_contract_address: :names] => :optional,
-              [from_address: :names] => :optional,
-              [to_address: :names] => :optional,
-              [transaction: :block] => :optional,
-              [created_contract_address: :smart_contract] => :optional,
-              [from_address: :smart_contract] => :optional,
-              [to_address: :smart_contract] => :optional
-            }
-          ],
-          paging_options(params)
-        )
+        [
+          necessity_by_association: %{
+            [created_contract_address: :names] => :optional,
+            [from_address: :names] => :optional,
+            [to_address: :names] => :optional,
+            [created_contract_address: :smart_contract] => :optional,
+            [from_address: :smart_contract] => :optional,
+            [to_address: :smart_contract] => :optional,
+            :transaction => :optional
+          }
+        ]
+        |> DenormalizationHelper.extend_transaction_block_necessity(:optional)
+        |> Keyword.merge(paging_options(params))
 
-      internal_transactions_plus_one = Chain.transaction_to_internal_transactions(transaction_hash, full_options)
+      internal_transactions_plus_one =
+        InternalTransaction.transaction_to_internal_transactions(transaction_hash, full_options)
 
       {internal_transactions, next_page} = split_list_by_page(internal_transactions_plus_one)
 
@@ -109,7 +110,7 @@ defmodule BlockScoutWeb.TransactionInternalTransactionController do
         transaction: transaction,
         from_tags: get_address_tags(transaction.from_address_hash, current_user(conn)),
         to_tags: get_address_tags(transaction.to_address_hash, current_user(conn)),
-        tx_tags:
+        transaction_tags:
           get_transaction_with_addresses_tags(
             transaction,
             current_user(conn)

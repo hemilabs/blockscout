@@ -14,14 +14,24 @@ defmodule Indexer.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       lockfile: "../../mix.lock",
       start_permanent: Mix.env() == :prod,
-      version: "5.3.1"
+      version: "6.9.0",
+      xref: [
+        exclude: [
+          Explorer.Chain.Optimism.Deposit,
+          Explorer.Chain.Optimism.FrameSequence,
+          Explorer.Chain.Optimism.OutputRoot,
+          Explorer.Chain.Optimism.TransactionBatch,
+          Explorer.Chain.Optimism.Withdrawal,
+          Explorer.Chain.Optimism.WithdrawalEvent
+        ]
+      ]
     ]
   end
 
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :os_mon],
       mod: {Indexer.Application, []}
     ]
   end
@@ -41,6 +51,9 @@ defmodule Indexer.MixProject do
       {:decorator, "~> 1.4"},
       # JSONRPC access to Nethermind for `Explorer.Indexer`
       {:ethereum_jsonrpc, in_umbrella: true},
+      # Brotli compression/decompression
+      {:brotli, "~> 0.3.2"},
+      {:ex_keccak, "~> 0.7.5"},
       # RLP encoding
       {:ex_rlp, "~> 0.6.0"},
       # Importing to database
@@ -50,12 +63,14 @@ defmodule Indexer.MixProject do
       # Log errors and application output to separate files
       {:logger_file_backend, "~> 0.0.10"},
       # Mocking `EthereumJSONRPC.Transport`, so we avoid hitting real chains for local testing
-      {:mox, "~> 1.0", only: [:test]},
+      {:mox, "~> 1.0"},
       {:prometheus_ex, git: "https://github.com/lanodan/prometheus.ex", branch: "fix/elixir-1.14", override: true},
       # Tracing
       {:spandex, "~> 3.0"},
       # `:spandex` integration with Datadog
-      {:spandex_datadog, "~> 1.0"}
+      {:spandex_datadog, "~> 1.0"},
+      {:logger_json, "~> 5.1"},
+      {:varint, "~> 1.4"}
     ]
   end
 

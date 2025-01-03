@@ -18,6 +18,9 @@ config :explorer, Explorer.Chain.Transaction.History.Historian, enabled: false
 config :explorer, Explorer.Market.History.Historian, enabled: false
 
 config :explorer, Explorer.Counters.AddressesCounter, enabled: false, enable_consolidation: false
+config :explorer, Explorer.Counters.LastOutputRootSizeCounter, enabled: false, enable_consolidation: false
+config :explorer, Explorer.Counters.Transactions24hStats, enabled: false, enable_consolidation: false
+config :explorer, Explorer.Counters.FreshPendingTransactionsCounter, enabled: false, enable_consolidation: false
 config :explorer, Explorer.Chain.Cache.ContractsCounter, enabled: false, enable_consolidation: false
 config :explorer, Explorer.Chain.Cache.NewContractsCounter, enabled: false, enable_consolidation: false
 config :explorer, Explorer.Chain.Cache.VerifiedContractsCounter, enabled: false, enable_consolidation: false
@@ -33,9 +36,24 @@ config :explorer, Explorer.Market.History.Cataloger, enabled: false
 
 config :explorer, Explorer.Tracer, disabled?: false
 
-config :explorer, Explorer.TokenTransferTokenIdMigration.Supervisor, enabled: false
-
 config :explorer, Explorer.TokenInstanceOwnerAddressMigration.Supervisor, enabled: false
+
+config :explorer, Explorer.Migrator.TransactionsDenormalization, enabled: false
+config :explorer, Explorer.Migrator.AddressCurrentTokenBalanceTokenType, enabled: false
+config :explorer, Explorer.Migrator.AddressTokenBalanceTokenType, enabled: false
+config :explorer, Explorer.Migrator.SanitizeMissingBlockRanges, enabled: false
+config :explorer, Explorer.Migrator.SanitizeIncorrectNFTTokenTransfers, enabled: false
+config :explorer, Explorer.Migrator.TokenTransferTokenType, enabled: false
+config :explorer, Explorer.Migrator.SanitizeIncorrectWETHTokenTransfers, enabled: false
+config :explorer, Explorer.Migrator.TransactionBlockConsensus, enabled: false
+config :explorer, Explorer.Migrator.TokenTransferBlockConsensus, enabled: false
+config :explorer, Explorer.Migrator.ShrinkInternalTransactions, enabled: false
+config :explorer, Explorer.Migrator.RestoreOmittedWETHTransfers, enabled: false
+config :explorer, Explorer.Migrator.SanitizeMissingTokenBalances, enabled: false
+config :explorer, Explorer.Migrator.SanitizeReplacedTransactions, enabled: false
+config :explorer, Explorer.Migrator.ReindexInternalTransactionsWithIncompatibleStatus, enabled: false
+config :explorer, Explorer.Migrator.SanitizeDuplicatedLogIndexLogs, enabled: false
+config :explorer, Explorer.Migrator.RefetchContractCodes, enabled: false
 
 config :explorer,
   realtime_events_sender: Explorer.Chain.Events.SimpleSender

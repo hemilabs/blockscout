@@ -3,6 +3,8 @@ defmodule Indexer.Fetcher.PolygonEdge.Deposit do
   Fills polygon_edge_deposits DB table.
   """
 
+  # todo: this module is deprecated and should be removed
+
   use GenServer
   use Indexer.Fetcher
 
@@ -14,9 +16,9 @@ defmodule Indexer.Fetcher.PolygonEdge.Deposit do
   alias ABI.TypeDecoder
   alias EthereumJSONRPC.Block.ByNumber
   alias EthereumJSONRPC.Blocks
-  alias Explorer.Chain.Events.Subscriber
   alias Explorer.Chain.PolygonEdge.Deposit
   alias Indexer.Fetcher.PolygonEdge
+  alias Indexer.Helper
 
   @fetcher_name :polygon_edge_deposit
 
@@ -43,32 +45,32 @@ defmodule Indexer.Fetcher.PolygonEdge.Deposit do
 
   @impl GenServer
   def init(_args) do
+    {:ok, %{}, {:continue, :ok}}
+  end
+
+  @impl GenServer
+  def handle_continue(:ok, state) do
     Logger.metadata(fetcher: @fetcher_name)
 
     env = Application.get_all_env(:indexer)[__MODULE__]
 
-    Subscriber.to(:polygon_edge_reorg_block, :realtime)
-
-    PolygonEdge.init_l1(
-      Deposit,
-      env,
-      self(),
-      env[:state_sender],
-      "State Sender",
-      "polygon_edge_deposits",
-      "Deposits"
-    )
+    case PolygonEdge.init_l1(
+           Deposit,
+           env,
+           self(),
+           env[:state_sender],
+           "State Sender",
+           "polygon_edge_deposits",
+           "Deposits"
+         ) do
+      :ignore -> {:stop, :normal, state}
+      {:ok, new_state} -> {:noreply, new_state}
+    end
   end
 
   @impl GenServer
   def handle_info(:continue, state) do
-    PolygonEdge.handle_continue(state, @state_synced_event, __MODULE__, @fetcher_name)
-  end
-
-  @impl GenServer
-  def handle_info({:chain_event, :polygon_edge_reorg_block, :realtime, block_number}, state) do
-    PolygonEdge.reorg_block_push(@fetcher_name, block_number)
-    {:noreply, state}
+    PolygonEdge.handle_continue(state, @state_synced_event, __MODULE__)
   end
 
   @impl GenServer
@@ -109,6 +111,27 @@ defmodule Indexer.Fetcher.PolygonEdge.Deposit do
     end)
   end
 
+  @doc """
+    Returns L1 RPC URL for this module.
+  """
+  @spec l1_rpc_url() :: binary() | nil
+  def l1_rpc_url do
+    PolygonEdge.l1_rpc_url()
+  end
+
+  @doc """
+    Determines if `Indexer.Fetcher.RollupL1ReorgMonitor` module must be up
+    for this module.
+
+    ## Returns
+    - `true` if the reorg monitor must be active, `false` otherwise.
+  """
+  @spec requires_l1_reorg_monitor?() :: boolean()
+  def requires_l1_reorg_monitor? do
+    module_config = Application.get_all_env(:indexer)[__MODULE__]
+    not is_nil(module_config[:start_block_l1])
+  end
+
   defp get_blocks_by_events(events, json_rpc_named_arguments, retries) do
     request =
       events
@@ -130,7 +153,7 @@ defmodule Indexer.Fetcher.PolygonEdge.Deposit do
 
   defp get_timestamps_by_events(events, json_rpc_named_arguments) do
     events
-    |> get_blocks_by_events(json_rpc_named_arguments, 100_000_000)
+    |> get_blocks_by_events(json_rpc_named_arguments, Helper.infinite_retries_number())
     |> Enum.reduce(%{}, fn block, acc ->
       block_number = quantity_to_integer(Map.get(block, "number"))
       {:ok, timestamp} = DateTime.from_unix(quantity_to_integer(Map.get(block, "timestamp")))

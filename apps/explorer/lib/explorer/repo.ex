@@ -12,21 +12,7 @@ defmodule Explorer.Repo do
   DATABASE_URL environment variable.
   """
   def init(_, opts) do
-    db_url = System.get_env("DATABASE_URL")
-    repo_conf = Application.get_env(:explorer, Explorer.Repo)
-
-    merged =
-      %{url: db_url}
-      |> ConfigHelper.get_db_config()
-      |> Keyword.merge(repo_conf, fn
-        _key, v1, nil -> v1
-        _key, nil, v2 -> v2
-        _, _, v2 -> v2
-      end)
-
-    Application.put_env(:explorer, Explorer.Repo, merged)
-
-    {:ok, Keyword.put(opts, :url, db_url)}
+    ConfigHelper.init_repo_module(__MODULE__, opts)
   end
 
   def logged_transaction(fun_or_multi, opts \\ []) do
@@ -137,21 +123,7 @@ defmodule Explorer.Repo do
       read_only: true
 
     def init(_, opts) do
-      db_url = Application.get_env(:explorer, Explorer.Repo.Replica1)[:url]
-      repo_conf = Application.get_env(:explorer, Explorer.Repo.Replica1)
-
-      merged =
-        %{url: db_url}
-        |> ConfigHelper.get_db_config()
-        |> Keyword.merge(repo_conf, fn
-          _key, v1, nil -> v1
-          _key, nil, v2 -> v2
-          _, _, v2 -> v2
-        end)
-
-      Application.put_env(:explorer, Explorer.Repo.Replica1, merged)
-
-      {:ok, Keyword.put(opts, :url, db_url)}
+      ConfigHelper.init_repo_module(__MODULE__, opts)
     end
   end
 
@@ -161,21 +133,17 @@ defmodule Explorer.Repo do
       adapter: Ecto.Adapters.Postgres
 
     def init(_, opts) do
-      db_url = Application.get_env(:explorer, Explorer.Repo.Account)[:url]
-      repo_conf = Application.get_env(:explorer, Explorer.Repo.Account)
+      ConfigHelper.init_repo_module(__MODULE__, opts)
+    end
+  end
 
-      merged =
-        %{url: db_url}
-        |> ConfigHelper.get_db_config()
-        |> Keyword.merge(repo_conf, fn
-          _key, v1, nil -> v1
-          _key, nil, v2 -> v2
-          _, _, v2 -> v2
-        end)
+  defmodule Optimism do
+    use Ecto.Repo,
+      otp_app: :explorer,
+      adapter: Ecto.Adapters.Postgres
 
-      Application.put_env(:explorer, Explorer.Repo.Account, merged)
-
-      {:ok, Keyword.put(opts, :url, db_url)}
+    def init(_, opts) do
+      ConfigHelper.init_repo_module(__MODULE__, opts)
     end
   end
 
@@ -185,21 +153,7 @@ defmodule Explorer.Repo do
       adapter: Ecto.Adapters.Postgres
 
     def init(_, opts) do
-      db_url = Application.get_env(:explorer, Explorer.Repo.PolygonEdge)[:url]
-      repo_conf = Application.get_env(:explorer, Explorer.Repo.PolygonEdge)
-
-      merged =
-        %{url: db_url}
-        |> ConfigHelper.get_db_config()
-        |> Keyword.merge(repo_conf, fn
-          _key, v1, nil -> v1
-          _key, nil, v2 -> v2
-          _, _, v2 -> v2
-        end)
-
-      Application.put_env(:explorer, Explorer.Repo.PolygonEdge, merged)
-
-      {:ok, Keyword.put(opts, :url, db_url)}
+      ConfigHelper.init_repo_module(__MODULE__, opts)
     end
   end
 
@@ -209,21 +163,37 @@ defmodule Explorer.Repo do
       adapter: Ecto.Adapters.Postgres
 
     def init(_, opts) do
-      db_url = Application.get_env(:explorer, __MODULE__)[:url]
-      repo_conf = Application.get_env(:explorer, __MODULE__)
+      ConfigHelper.init_repo_module(__MODULE__, opts)
+    end
+  end
 
-      merged =
-        %{url: db_url}
-        |> ConfigHelper.get_db_config()
-        |> Keyword.merge(repo_conf, fn
-          _key, v1, nil -> v1
-          _key, nil, v2 -> v2
-          _, _, v2 -> v2
-        end)
+  defmodule Scroll do
+    use Ecto.Repo,
+      otp_app: :explorer,
+      adapter: Ecto.Adapters.Postgres
 
-      Application.put_env(:explorer, __MODULE__, merged)
+    def init(_, opts) do
+      ConfigHelper.init_repo_module(__MODULE__, opts)
+    end
+  end
 
-      {:ok, Keyword.put(opts, :url, db_url)}
+  defmodule ZkSync do
+    use Ecto.Repo,
+      otp_app: :explorer,
+      adapter: Ecto.Adapters.Postgres
+
+    def init(_, opts) do
+      ConfigHelper.init_repo_module(__MODULE__, opts)
+    end
+  end
+
+  defmodule Celo do
+    use Ecto.Repo,
+      otp_app: :explorer,
+      adapter: Ecto.Adapters.Postgres
+
+    def init(_, opts) do
+      ConfigHelper.init_repo_module(__MODULE__, opts)
     end
   end
 
@@ -233,21 +203,17 @@ defmodule Explorer.Repo do
       adapter: Ecto.Adapters.Postgres
 
     def init(_, opts) do
-      db_url = Application.get_env(:explorer, __MODULE__)[:url]
-      repo_conf = Application.get_env(:explorer, __MODULE__)
+      ConfigHelper.init_repo_module(__MODULE__, opts)
+    end
+  end
 
-      merged =
-        %{url: db_url}
-        |> ConfigHelper.get_db_config()
-        |> Keyword.merge(repo_conf, fn
-          _key, v1, nil -> v1
-          _key, nil, v2 -> v2
-          _, _, v2 -> v2
-        end)
+  defmodule Shibarium do
+    use Ecto.Repo,
+      otp_app: :explorer,
+      adapter: Ecto.Adapters.Postgres
 
-      Application.put_env(:explorer, __MODULE__, merged)
-
-      {:ok, Keyword.put(opts, :url, db_url)}
+    def init(_, opts) do
+      ConfigHelper.init_repo_module(__MODULE__, opts)
     end
   end
 
@@ -257,21 +223,87 @@ defmodule Explorer.Repo do
       adapter: Ecto.Adapters.Postgres
 
     def init(_, opts) do
-      db_url = Application.get_env(:explorer, __MODULE__)[:url]
-      repo_conf = Application.get_env(:explorer, __MODULE__)
+      ConfigHelper.init_repo_module(__MODULE__, opts)
+    end
+  end
 
-      merged =
-        %{url: db_url}
-        |> ConfigHelper.get_db_config()
-        |> Keyword.merge(repo_conf, fn
-          _key, v1, nil -> v1
-          _key, nil, v2 -> v2
-          _, _, v2 -> v2
-        end)
+  defmodule Beacon do
+    use Ecto.Repo,
+      otp_app: :explorer,
+      adapter: Ecto.Adapters.Postgres
 
-      Application.put_env(:explorer, __MODULE__, merged)
+    def init(_, opts) do
+      ConfigHelper.init_repo_module(__MODULE__, opts)
+    end
+  end
 
-      {:ok, Keyword.put(opts, :url, db_url)}
+  defmodule Arbitrum do
+    use Ecto.Repo,
+      otp_app: :explorer,
+      adapter: Ecto.Adapters.Postgres
+
+    def init(_, opts) do
+      ConfigHelper.init_repo_module(__MODULE__, opts)
+    end
+  end
+
+  defmodule BridgedTokens do
+    use Ecto.Repo,
+      otp_app: :explorer,
+      adapter: Ecto.Adapters.Postgres
+
+    def init(_, opts) do
+      ConfigHelper.init_repo_module(__MODULE__, opts)
+    end
+  end
+
+  defmodule Filecoin do
+    use Ecto.Repo,
+      otp_app: :explorer,
+      adapter: Ecto.Adapters.Postgres
+
+    def init(_, opts) do
+      ConfigHelper.init_repo_module(__MODULE__, opts)
+    end
+  end
+
+  defmodule Stability do
+    use Ecto.Repo,
+      otp_app: :explorer,
+      adapter: Ecto.Adapters.Postgres
+
+    def init(_, opts) do
+      ConfigHelper.init_repo_module(__MODULE__, opts)
+    end
+  end
+
+  defmodule Mud do
+    use Ecto.Repo,
+      otp_app: :explorer,
+      adapter: Ecto.Adapters.Postgres
+
+    def init(_, opts) do
+      ConfigHelper.init_repo_module(__MODULE__, opts)
+    end
+  end
+
+  defmodule ShrunkInternalTransactions do
+    use Ecto.Repo,
+      otp_app: :explorer,
+      adapter: Ecto.Adapters.Postgres
+
+    def init(_, opts) do
+      ConfigHelper.init_repo_module(__MODULE__, opts)
+    end
+  end
+
+  defmodule Blackfort do
+    use Ecto.Repo,
+      otp_app: :explorer,
+      adapter: Ecto.Adapters.Postgres
+
+    def init(_, opts) do
+      ConfigHelper.init_repo_module(__MODULE__, opts)
     end
   end
 end

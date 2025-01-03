@@ -8,8 +8,11 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
   alias Ecto.Multi
   alias Explorer.Chain.Import.Runner.{Blocks, Transactions}
   alias Explorer.Chain.{Address, Block, Transaction, PendingBlockOperation}
+  alias Explorer.Chain.Celo.PendingEpochBlockOperation
   alias Explorer.{Chain, Repo}
   alias Explorer.Utility.MissingBlockRange
+
+  alias Explorer.Chain.Celo.Helper, as: CeloHelper
 
   describe "run/1" do
     setup do
@@ -81,6 +84,34 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
 
       assert Repo.one!(from(transaction_fork in Transaction.Fork, select: "ctid")) == ctid,
              "Tuple was written even though it is not distinct"
+    end
+
+    test "coin balances are deleted and new balances are derived if some blocks lost consensus",
+         %{consensus_block: %{number: block_number} = block, options: options} do
+      %{hash: address_hash} = address = insert(:address)
+
+      prev_block_number = block_number - 1
+
+      insert(:address_coin_balance, address: address, block_number: block_number)
+      %{value: prev_value} = insert(:address_coin_balance, address: address, block_number: prev_block_number)
+
+      assert count(Address.CoinBalance) == 2
+
+      insert(:block, number: block_number, consensus: true)
+
+      assert {:ok,
+              %{
+                delete_address_coin_balances: [^address_hash],
+                derive_address_fetched_coin_balances: [
+                  %{
+                    hash: ^address_hash,
+                    fetched_coin_balance: ^prev_value,
+                    fetched_coin_balance_block_number: ^prev_block_number
+                  }
+                ]
+              }} = run_block_consensus_change(block, true, options)
+
+      assert %{value: ^prev_value, block_number: ^prev_block_number} = Repo.one(Address.CoinBalance)
     end
 
     test "delete_address_current_token_balances deletes rows with matching block number when consensus is true",
@@ -369,6 +400,79 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
       assert %{block_number: ^number, block_hash: ^hash} = Repo.one(PendingBlockOperation)
     end
 
+    test "inserts pending_block_operations only for actually inserted blocks",
+         %{consensus_block: %{miner_hash: miner_hash}, options: options} do
+      %{number: number, hash: hash} = new_block = params_for(:block, miner_hash: miner_hash, consensus: true)
+      new_block1 = params_for(:block, miner_hash: miner_hash, consensus: true)
+
+      miner = Repo.get_by(Address, hash: miner_hash)
+
+      insert(:block, Map.put(new_block1, :miner, miner))
+
+      %Ecto.Changeset{valid?: true, changes: block_changes} = Block.changeset(%Block{}, new_block)
+      %Ecto.Changeset{valid?: true, changes: block_changes1} = Block.changeset(%Block{}, new_block1)
+
+      Multi.new()
+      |> Blocks.run([block_changes, block_changes1], options)
+      |> Repo.transaction()
+
+      assert %{block_number: ^number, block_hash: ^hash} = Repo.one(PendingBlockOperation)
+    end
+
+    if Application.compile_env(:explorer, :chain_type) == :celo do
+      test "inserts pending_epoch_block_operations only for epoch blocks",
+           %{consensus_block: %{miner_hash: miner_hash}, options: options} do
+        epoch_block_number = CeloHelper.blocks_per_epoch()
+
+        %{hash: hash} =
+          epoch_block_params =
+          params_for(
+            :block,
+            miner_hash: miner_hash,
+            consensus: true,
+            number: epoch_block_number
+          )
+
+        non_epoch_block_params =
+          params_for(
+            :block,
+            miner_hash: miner_hash,
+            consensus: true,
+            number: epoch_block_number + 1
+          )
+
+        insert_block(epoch_block_params, options)
+        insert_block(non_epoch_block_params, options)
+
+        assert %{block_hash: ^hash} = Repo.one(PendingEpochBlockOperation)
+      end
+
+      test "inserts pending_epoch_block_operations only for consensus epoch blocks",
+           %{consensus_block: %{miner_hash: miner_hash}, options: options} do
+        %{hash: hash} =
+          first_epoch_block_params =
+          params_for(
+            :block,
+            miner_hash: miner_hash,
+            consensus: true,
+            number: CeloHelper.blocks_per_epoch()
+          )
+
+        second_epoch_block_params =
+          params_for(
+            :block,
+            miner_hash: miner_hash,
+            consensus: false,
+            number: CeloHelper.blocks_per_epoch() * 2
+          )
+
+        insert_block(first_epoch_block_params, options)
+        insert_block(second_epoch_block_params, options)
+
+        assert %{block_hash: ^hash} = Repo.one(PendingEpochBlockOperation)
+      end
+    end
+
     test "change instance owner if was token transfer in older blocks",
          %{consensus_block: %{hash: block_hash, miner_hash: miner_hash, number: block_number}, options: options} do
       block_number = block_number + 2
@@ -386,6 +490,7 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
       tt =
         insert(:token_transfer,
           token_ids: [id],
+          token_type: "ERC-721",
           transaction: transaction,
           token_contract_address: token_address,
           block_number: block_number,
@@ -404,6 +509,7 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
       for _ <- 0..10 do
         insert(:token_transfer,
           token_ids: [id],
+          token_type: "ERC-721",
           transaction: transaction,
           token_contract_address: tt.token_contract_address,
           block_number: consensus_block_1.number,
@@ -414,6 +520,7 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
       tt_1 =
         insert(:token_transfer,
           token_ids: [id],
+          token_type: "ERC-721",
           transaction: transaction,
           token_contract_address: tt.token_contract_address,
           block_number: consensus_block_1.number,
@@ -424,14 +531,15 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
       consensus_block_2 = insert(:block, %{hash: hash_2, number: block_number - 2})
 
       for _ <- 0..10 do
-        tx =
+        transaction =
           :transaction
           |> insert()
           |> with_block(consensus_block_2)
 
         insert(:token_transfer,
           token_ids: [id],
-          transaction: tx,
+          token_type: "ERC-721",
+          transaction: transaction,
           token_contract_address: tt.token_contract_address,
           block_number: consensus_block_2.number,
           block: consensus_block_2
@@ -490,6 +598,7 @@ defmodule Explorer.Chain.Import.Runner.BlocksTest do
       tt =
         insert(:token_transfer,
           token_ids: [id],
+          token_type: "ERC-721",
           transaction: transaction,
           token_contract_address: token_address,
           block_number: block_number,

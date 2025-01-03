@@ -67,19 +67,19 @@ defmodule BlockScoutWeb.ChainController do
   end
 
   def search(conn, %{"q" => query}) do
+    search_path =
+      conn
+      |> search_path(:search_results, q: query)
+      |> Controller.full_path()
+
     query
     |> String.trim()
     |> BlockScoutWeb.Chain.from_param()
     |> case do
       {:ok, item} ->
-        redirect_search_results(conn, item)
+        redirect_search_results(conn, item, search_path)
 
       {:error, :not_found} ->
-        search_path =
-          conn
-          |> search_path(:search_results, q: query)
-          |> Controller.full_path()
-
         redirect(conn, to: search_path)
     end
   end
@@ -97,13 +97,13 @@ defmodule BlockScoutWeb.ChainController do
     encoded_results =
       results
       |> Enum.map(fn item ->
-        tx_hash_bytes = Map.get(item, :tx_hash)
+        transaction_hash_bytes = Map.get(item, :transaction_hash)
         block_hash_bytes = Map.get(item, :block_hash)
 
         item =
-          if tx_hash_bytes do
+          if transaction_hash_bytes do
             item
-            |> Map.replace(:tx_hash, "0x" <> Base.encode16(tx_hash_bytes, case: :lower))
+            |> Map.replace(:transaction_hash, "0x" <> Base.encode16(transaction_hash_bytes, case: :lower))
           else
             item
           end
@@ -150,7 +150,7 @@ defmodule BlockScoutWeb.ChainController do
     end
   end
 
-  defp redirect_search_results(conn, %Address{} = item) do
+  defp redirect_search_results(conn, %Address{} = item, _search_path) do
     address_path =
       conn
       |> address_path(:show, item)
@@ -159,7 +159,7 @@ defmodule BlockScoutWeb.ChainController do
     redirect(conn, to: address_path)
   end
 
-  defp redirect_search_results(conn, %Block{} = item) do
+  defp redirect_search_results(conn, %Block{} = item, _search_path) do
     block_path =
       conn
       |> block_path(:show, item)
@@ -168,12 +168,16 @@ defmodule BlockScoutWeb.ChainController do
     redirect(conn, to: block_path)
   end
 
-  defp redirect_search_results(conn, %Transaction{} = item) do
+  defp redirect_search_results(conn, %Transaction{} = item, _search_path) do
     transaction_path =
       conn
       |> transaction_path(:show, item)
       |> Controller.full_path()
 
     redirect(conn, to: transaction_path)
+  end
+
+  defp redirect_search_results(conn, _item, search_path) do
+    redirect(conn, to: search_path)
   end
 end

@@ -3,6 +3,7 @@ defmodule BlockScoutWeb.API.RPC.AddressView do
 
   alias BlockScoutWeb.API.EthRPC.View, as: EthRPCView
   alias BlockScoutWeb.API.RPC.RPCView
+  alias Explorer.Chain.DenormalizationHelper
 
   def render("listaccounts.json", %{accounts: accounts}) do
     accounts = Enum.map(accounts, &prepare_account/1)
@@ -40,6 +41,11 @@ defmodule BlockScoutWeb.API.RPC.AddressView do
 
   def render("tokentx.json", %{token_transfers: token_transfers}) do
     data = Enum.map(token_transfers, &prepare_token_transfer/1)
+    RPCView.render("show.json", data: data)
+  end
+
+  def render("tokennfttx.json", %{token_transfers: token_transfers, max_block_number: max_block_number}) do
+    data = Enum.map(token_transfers, &prepare_nft_transfer(&1, max_block_number))
     RPCView.render("show.json", data: data)
   end
 
@@ -113,7 +119,7 @@ defmodule BlockScoutWeb.API.RPC.AddressView do
       "to" => "#{transaction.to_address_hash}",
       "value" => "#{transaction.value.value}",
       "gas" => "#{transaction.gas}",
-      "gasPrice" => "#{transaction.gas_price.value}",
+      "gasPrice" => "#{transaction.gas_price && transaction.gas_price.value}",
       "isError" => if(transaction.status == :ok, do: "0", else: "1"),
       "txreceipt_status" => if(transaction.status == :ok, do: "1", else: "0"),
       "input" => "#{transaction.input}",
@@ -160,7 +166,7 @@ defmodule BlockScoutWeb.API.RPC.AddressView do
       "tokenDecimal" => to_string(token_transfer.token_decimals),
       "transactionIndex" => to_string(token_transfer.transaction_index),
       "gas" => to_string(token_transfer.transaction_gas),
-      "gasPrice" => to_string(token_transfer.transaction_gas_price.value),
+      "gasPrice" => to_string(token_transfer.transaction_gas_price && token_transfer.transaction_gas_price.value),
       "gasUsed" => to_string(token_transfer.transaction_gas_used),
       "cumulativeGasUsed" => to_string(token_transfer.transaction_cumulative_gas_used),
       "input" => to_string(token_transfer.transaction_input),
@@ -187,6 +193,13 @@ defmodule BlockScoutWeb.API.RPC.AddressView do
     |> Map.put_new(:values, token_transfer.amounts)
   end
 
+  defp prepare_token_transfer(%{token_type: "ERC-404"} = token_transfer) do
+    token_transfer
+    |> prepare_common_token_transfer()
+    |> Map.put_new(:tokenIDs, token_transfer.token_ids)
+    |> Map.put_new(:values, token_transfer.amounts)
+  end
+
   defp prepare_token_transfer(%{token_type: "ERC-20"} = token_transfer) do
     token_transfer
     |> prepare_common_token_transfer()
@@ -195,6 +208,38 @@ defmodule BlockScoutWeb.API.RPC.AddressView do
 
   defp prepare_token_transfer(token_transfer) do
     prepare_common_token_transfer(token_transfer)
+  end
+
+  defp prepare_nft_transfer(token_transfer, max_block_number) do
+    timestamp =
+      if DenormalizationHelper.tt_denormalization_finished?() do
+        to_string(DateTime.to_unix(token_transfer.transaction.block_timestamp))
+      else
+        to_string(DateTime.to_unix(token_transfer.block.timestamp))
+      end
+
+    %{
+      "blockNumber" => to_string(token_transfer.block_number),
+      "timeStamp" => timestamp,
+      "hash" => to_string(token_transfer.transaction_hash),
+      "nonce" => to_string(token_transfer.transaction.nonce),
+      "blockHash" => to_string(token_transfer.block_hash),
+      "from" => to_string(token_transfer.from_address_hash),
+      "contractAddress" => to_string(token_transfer.token_contract_address_hash),
+      "to" => to_string(token_transfer.to_address_hash),
+      "tokenID" => to_string(List.first(token_transfer.token_ids)),
+      "logIndex" => to_string(token_transfer.log_index),
+      "tokenName" => token_transfer.token.name,
+      "tokenSymbol" => token_transfer.token.symbol,
+      "tokenDecimal" => to_string(token_transfer.token.decimals || 0),
+      "transactionIndex" => to_string(token_transfer.transaction.index),
+      "gas" => to_string(token_transfer.transaction.gas),
+      "gasPrice" => to_string(token_transfer.transaction.gas_price && token_transfer.transaction.gas_price.value),
+      "gasUsed" => to_string(token_transfer.transaction.gas_used),
+      "cumulativeGasUsed" => to_string(token_transfer.transaction.cumulative_gas_used),
+      "input" => "deprecated",
+      "confirmations" => to_string(max_block_number - token_transfer.block_number)
+    }
   end
 
   defp prepare_block(block) do

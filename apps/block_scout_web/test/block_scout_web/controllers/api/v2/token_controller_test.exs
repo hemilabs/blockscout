@@ -1,11 +1,17 @@
 defmodule BlockScoutWeb.API.V2.TokenControllerTest do
+  use EthereumJSONRPC.Case, async: false
   use BlockScoutWeb.ConnCase
+  use BlockScoutWeb.ChannelCase, async: false
 
-  alias Explorer.Repo
+  import Mox
+
+  alias Explorer.{Repo, TestHelper}
 
   alias Explorer.Chain.{Address, Token, Token.Instance, TokenTransfer}
-
   alias Explorer.Chain.Address.CurrentTokenBalance
+  alias Explorer.Chain.Events.Subscriber
+
+  alias Indexer.Fetcher.OnDemand.TokenInstanceMetadataRefetch, as: TokenInstanceMetadataRefetchOnDemand
 
   describe "/tokens/{address_hash}" do
     test "get 404 on non existing address", %{conn: conn} do
@@ -86,7 +92,10 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
         )
 
       request = get(conn, "/api/v2/tokens/#{token.contract_address.hash}/counters")
+      assert json_response(request, 200)
 
+      Process.sleep(500)
+      request = get(conn, "/api/v2/tokens/#{token.contract_address.hash}/counters")
       assert response = json_response(request, 200)
 
       assert response["transfers_count"] == "3"
@@ -122,12 +131,12 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
 
       token_transfers =
         for _ <- 0..50 do
-          tx = insert(:transaction, input: "0xabcd010203040506") |> with_block()
+          transaction = insert(:transaction, input: "0xabcd010203040506") |> with_block()
 
           insert(:token_transfer,
-            transaction: tx,
-            block: tx.block,
-            block_number: tx.block_number,
+            transaction: transaction,
+            block: transaction.block,
+            block_number: transaction.block_number,
             token_contract_address: token.contract_address
           )
         end
@@ -152,14 +161,15 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
 
       tt =
         for _ <- 0..50 do
-          tx = insert(:transaction, input: "0xabcd010203040506") |> with_block()
+          transaction = insert(:transaction, input: "0xabcd010203040506") |> with_block()
 
           insert(:token_transfer,
-            transaction: tx,
-            block: tx.block,
-            block_number: tx.block_number,
+            transaction: transaction,
+            block: transaction.block,
+            block_number: transaction.block_number,
             token_contract_address: token.contract_address,
             token_ids: Enum.map(0..50, fn _x -> id end),
+            token_type: "ERC-1155",
             amounts: Enum.map(0..50, fn x -> x end)
           )
         end
@@ -185,14 +195,15 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
 
       token_transfers =
         for i <- 0..50 do
-          tx = insert(:transaction, input: "0xabcd010203040506") |> with_block()
+          transaction = insert(:transaction, input: "0xabcd010203040506") |> with_block()
 
           insert(:token_transfer,
-            transaction: tx,
-            block: tx.block,
-            block_number: tx.block_number,
+            transaction: transaction,
+            block: transaction.block,
+            block_number: transaction.block_number,
             token_contract_address: token.contract_address,
-            token_ids: [i]
+            token_ids: [i],
+            token_type: "ERC-721"
           )
         end
 
@@ -209,15 +220,16 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
 
     test "check that pagination works fine with 1155 batches #1 (large batch)", %{conn: conn} do
       token = insert(:token, type: "ERC-1155")
-      tx = insert(:transaction, input: "0xabcd010203040506") |> with_block()
+      transaction = insert(:transaction, input: "0xabcd010203040506") |> with_block()
 
       tt =
         insert(:token_transfer,
-          transaction: tx,
-          block: tx.block,
-          block_number: tx.block_number,
+          transaction: transaction,
+          block: transaction.block,
+          block_number: transaction.block_number,
           token_contract_address: token.contract_address,
           token_ids: Enum.map(0..50, fn x -> x end),
+          token_type: "ERC-1155",
           amounts: Enum.map(0..50, fn x -> x end)
         )
 
@@ -241,15 +253,16 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
          %{conn: conn} do
       token = insert(:token, type: "ERC-1155")
 
-      tx_1 = insert(:transaction, input: "0xabcd010203040506") |> with_block()
+      transaction_1 = insert(:transaction, input: "0xabcd010203040506") |> with_block()
 
       tt_1 =
         insert(:token_transfer,
-          transaction: tx_1,
-          block: tx_1.block,
-          block_number: tx_1.block_number,
+          transaction: transaction_1,
+          block: transaction_1.block,
+          block_number: transaction_1.block_number,
           token_contract_address: token.contract_address,
           token_ids: Enum.map(0..24, fn x -> x end),
+          token_type: "ERC-1155",
           amounts: Enum.map(0..24, fn x -> x end)
         )
 
@@ -258,15 +271,16 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
           %TokenTransfer{tt_1 | token_ids: [i], amount: i}
         end
 
-      tx_2 = insert(:transaction, input: "0xabcd010203040506") |> with_block()
+      transaction_2 = insert(:transaction, input: "0xabcd010203040506") |> with_block()
 
       tt_2 =
         insert(:token_transfer,
-          transaction: tx_2,
-          block: tx_2.block,
-          block_number: tx_2.block_number,
+          transaction: transaction_2,
+          block: transaction_2.block,
+          block_number: transaction_2.block_number,
           token_contract_address: token.contract_address,
           token_ids: Enum.map(25..49, fn x -> x end),
+          token_type: "ERC-1155",
           amounts: Enum.map(25..49, fn x -> x end)
         )
 
@@ -277,11 +291,12 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
 
       tt_3 =
         insert(:token_transfer,
-          transaction: tx_2,
-          block: tx_2.block,
-          block_number: tx_2.block_number,
+          transaction: transaction_2,
+          block: transaction_2.block,
+          block_number: transaction_2.block_number,
           token_contract_address: token.contract_address,
           token_ids: [50],
+          token_type: "ERC-1155",
           amounts: [50]
         )
 
@@ -299,15 +314,16 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
     test "check that pagination works fine with 1155 batches #3", %{conn: conn} do
       token = insert(:token, type: "ERC-1155")
 
-      tx_1 = insert(:transaction, input: "0xabcd010203040506") |> with_block()
+      transaction_1 = insert(:transaction, input: "0xabcd010203040506") |> with_block()
 
       tt_1 =
         insert(:token_transfer,
-          transaction: tx_1,
-          block: tx_1.block,
-          block_number: tx_1.block_number,
+          transaction: transaction_1,
+          block: transaction_1.block,
+          block_number: transaction_1.block_number,
           token_contract_address: token.contract_address,
           token_ids: Enum.map(0..24, fn x -> x end),
+          token_type: "ERC-1155",
           amounts: Enum.map(0..24, fn x -> x end)
         )
 
@@ -316,15 +332,16 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
           %TokenTransfer{tt_1 | token_ids: [i], amount: i}
         end
 
-      tx_2 = insert(:transaction, input: "0xabcd010203040506") |> with_block()
+      transaction_2 = insert(:transaction, input: "0xabcd010203040506") |> with_block()
 
       tt_2 =
         insert(:token_transfer,
-          transaction: tx_2,
-          block: tx_2.block,
-          block_number: tx_2.block_number,
+          transaction: transaction_2,
+          block: transaction_2.block,
+          block_number: transaction_2.block_number,
           token_contract_address: token.contract_address,
           token_ids: Enum.map(25..50, fn x -> x end),
+          token_type: "ERC-1155",
           amounts: Enum.map(25..50, fn x -> x end)
         )
 
@@ -524,6 +541,8 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
         tokens_ordered_by_holders_asc
       )
 
+      :timer.sleep(200)
+
       # by circulating_market_cap
       tokens_ordered_by_circulating_market_cap =
         Enum.sort(tokens, &(&1.circulating_market_cap <= &2.circulating_market_cap))
@@ -593,6 +612,23 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
       assert %{"items" => [], "next_page_params" => nil} = json_response(request, 200)
     end
 
+    test "ignores wrong ordering params", %{conn: conn} do
+      tokens =
+        for i <- 0..50 do
+          insert(:token, fiat_value: i)
+        end
+
+      request = get(conn, "/api/v2/tokens", %{"sort" => "foo", "order" => "bar"})
+
+      assert response = json_response(request, 200)
+
+      request_2nd_page =
+        get(conn, "/api/v2/tokens", %{"sort" => "foo", "order" => "bar"} |> Map.merge(response["next_page_params"]))
+
+      assert response_2nd_page = json_response(request_2nd_page, 200)
+      check_paginated_response(response, response_2nd_page, tokens)
+    end
+
     test "tokens are filtered by single type", %{conn: conn} do
       erc_20_tokens =
         for i <- 0..50 do
@@ -609,14 +645,20 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
           insert(:token, type: "ERC-1155")
         end
 
-      check_tokens_pagination(erc_20_tokens |> Enum.reverse(), conn, %{"type" => "ERC-20"})
+      erc_404_tokens =
+        for _i <- 0..50 do
+          insert(:token, type: "ERC-404")
+        end
+
+      check_tokens_pagination(erc_20_tokens, conn, %{"type" => "ERC-20"})
       check_tokens_pagination(erc_721_tokens |> Enum.reverse(), conn, %{"type" => "ERC-721"})
       check_tokens_pagination(erc_1155_tokens |> Enum.reverse(), conn, %{"type" => "ERC-1155"})
+      check_tokens_pagination(erc_404_tokens |> Enum.reverse(), conn, %{"type" => "ERC-404"})
     end
 
     test "tokens are filtered by multiple type", %{conn: conn} do
       erc_20_tokens =
-        for i <- 0..25 do
+        for i <- 11..36 do
           insert(:token, fiat_value: i)
         end
 
@@ -630,6 +672,11 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
           insert(:token, type: "ERC-1155")
         end
 
+      erc_404_tokens =
+        for _i <- 0..24 do
+          insert(:token, type: "ERC-404")
+        end
+
       check_tokens_pagination(
         erc_721_tokens |> Kernel.++(erc_1155_tokens) |> Enum.reverse(),
         conn,
@@ -639,10 +686,18 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
       )
 
       check_tokens_pagination(
-        erc_20_tokens |> Kernel.++(erc_1155_tokens) |> Enum.reverse(),
+        erc_1155_tokens |> Enum.reverse() |> Kernel.++(erc_20_tokens),
         conn,
         %{
           "type" => "[erc-20,ERC-1155]"
+        }
+      )
+
+      check_tokens_pagination(
+        erc_404_tokens |> Enum.reverse() |> Kernel.++(erc_20_tokens),
+        conn,
+        %{
+          "type" => "[erc-20,ERC-404]"
         }
       )
     end
@@ -652,7 +707,6 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
         for i <- 0..50 do
           insert(:token, fiat_value: i)
         end
-        |> Enum.reverse()
 
       check_tokens_pagination(tokens, conn)
     end
@@ -865,6 +919,87 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
 
       check_paginated_response(response, response_2nd_page, instances)
     end
+
+    test "get instances list by holder erc-721", %{conn: conn} do
+      token = insert(:token, type: "ERC-721")
+
+      insert_list(51, :token_instance, token_contract_address_hash: token.contract_address_hash)
+
+      address = insert(:address, contract_code: Enum.random([nil, "0x010101"]))
+
+      insert_list(51, :token_instance)
+
+      token_instances =
+        for _ <- 0..50 do
+          insert(:token_instance,
+            owner_address_hash: address.hash,
+            token_contract_address_hash: token.contract_address_hash
+          )
+          |> Repo.preload([:token, :owner])
+        end
+
+      filter = %{"holder_address_hash" => to_string(address.hash)}
+
+      request = get(conn, "/api/v2/tokens/#{token.contract_address_hash}/instances", filter)
+      assert response = json_response(request, 200)
+
+      request_2nd_page =
+        get(
+          conn,
+          "/api/v2/tokens/#{token.contract_address_hash}/instances",
+          Map.merge(response["next_page_params"], filter)
+        )
+
+      assert response_2nd_page = json_response(request_2nd_page, 200)
+
+      check_paginated_response(response, response_2nd_page, token_instances)
+    end
+
+    test "get instances list by holder erc-1155", %{conn: conn} do
+      token = insert(:token, type: "ERC-1155")
+
+      insert_list(51, :token_instance, token_contract_address_hash: token.contract_address_hash)
+
+      address = insert(:address, contract_code: Enum.random([nil, "0x010101"]))
+
+      insert_list(51, :token_instance)
+
+      token_instances =
+        for _ <- 0..50 do
+          ti =
+            insert(:token_instance,
+              token_contract_address_hash: token.contract_address_hash
+            )
+            |> Repo.preload([:token])
+
+          current_token_balance =
+            insert(:address_current_token_balance_with_token_id_and_fixed_token_type,
+              address: address,
+              token_type: "ERC-1155",
+              token_id: ti.token_id,
+              token_contract_address_hash: token.contract_address_hash,
+              value: Enum.random(1..2)
+            )
+
+          %Instance{ti | current_token_balance: current_token_balance, owner: address}
+        end
+
+      filter = %{"holder_address_hash" => to_string(address.hash)}
+
+      request = get(conn, "/api/v2/tokens/#{token.contract_address_hash}/instances", filter)
+      assert response = json_response(request, 200)
+
+      request_2nd_page =
+        get(
+          conn,
+          "/api/v2/tokens/#{token.contract_address_hash}/instances",
+          Map.merge(response["next_page_params"], filter)
+        )
+
+      assert response_2nd_page = json_response(request_2nd_page, 200)
+
+      check_paginated_response(response, response_2nd_page, token_instances)
+    end
   end
 
   describe "/tokens/{address_hash}/instances/{token_id}" do
@@ -896,11 +1031,12 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
 
       instance = insert(:token_instance, token_id: 0, token_contract_address_hash: token.contract_address_hash)
 
-      transfer =
+      _transfer =
         insert(:token_transfer,
           token_contract_address: token.contract_address,
           transaction: transaction,
-          token_ids: [0]
+          token_ids: [0],
+          token_type: "ERC-721"
         )
 
       for _ <- 1..50 do
@@ -911,7 +1047,47 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
 
       assert data = json_response(request, 200)
       assert compare_item(instance, data)
-      assert compare_item(transfer.to_address, data["owner"])
+      assert Address.checksum(instance.owner_address_hash) == data["owner"]["hash"]
+    end
+
+    test "get token instance by token id which is not presented in DB", %{conn: conn} do
+      token = insert(:token, type: "ERC-721")
+
+      request = get(conn, "/api/v2/tokens/#{token.contract_address.hash}/instances/0")
+      token_address = Address.checksum(token.contract_address.hash)
+      token_name = token.name
+      token_type = token.type
+
+      assert %{
+               "animation_url" => nil,
+               "external_app_url" => nil,
+               "id" => "0",
+               "image_url" => nil,
+               "is_unique" => true,
+               "metadata" => nil,
+               "owner" => nil,
+               "token" => %{"address" => ^token_address, "name" => ^token_name, "type" => ^token_type}
+             } = json_response(request, 200)
+    end
+
+    # https://github.com/blockscout/blockscout/issues/9906
+    test "regression for #9906", %{conn: conn} do
+      token = insert(:token, type: "ERC-721")
+
+      insert(:token_instance,
+        token_id: 0,
+        token_contract_address_hash: token.contract_address_hash,
+        metadata: %{
+          "image_url" => "ipfs://QmTQBtvkCQKnxbUejwYHrs2G74JR2qFwxPUqRb3BQ6BM3S/gm%20gm%20feelin%20blue%204k.png"
+        }
+      )
+
+      request = get(conn, "/api/v2/tokens/#{token.contract_address.hash}/instances/0")
+
+      assert %{
+               "image_url" =>
+                 "https://ipfs.io/ipfs/QmTQBtvkCQKnxbUejwYHrs2G74JR2qFwxPUqRb3BQ6BM3S/gm%20gm%20feelin%20blue%204k.png"
+             } = json_response(request, 200)
     end
   end
 
@@ -950,6 +1126,7 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
         token_contract_address: token.contract_address,
         transaction: transaction,
         token_ids: [id + 1],
+        token_type: "ERC-1155",
         amounts: [1]
       )
 
@@ -958,6 +1135,7 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
           token_contract_address: token.contract_address,
           transaction: transaction,
           token_ids: [id, id + 1],
+          token_type: "ERC-1155",
           amounts: [1, 2]
         )
 
@@ -971,7 +1149,70 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
           insert(:token_transfer,
             token_contract_address: token.contract_address,
             transaction: transaction,
-            token_ids: [id]
+            token_ids: [id],
+            token_type: "ERC-1155"
+          )
+        end
+
+      request = get(conn, "/api/v2/tokens/#{token.contract_address_hash}/instances/#{id}/transfers")
+      assert response = json_response(request, 200)
+
+      request_2nd_page =
+        get(
+          conn,
+          "/api/v2/tokens/#{token.contract_address_hash}/instances/#{id}/transfers",
+          response["next_page_params"]
+        )
+
+      assert response_2nd_page = json_response(request_2nd_page, 200)
+      check_paginated_response(response, response_2nd_page, transfers_0 ++ transfers_1)
+    end
+
+    test "check that pagination works for 404 tokens", %{conn: conn} do
+      token = insert(:token, type: "ERC-404")
+
+      for _ <- 0..50 do
+        insert(:token_instance, token_id: 0)
+      end
+
+      id = :rand.uniform(1_000_000)
+
+      transaction =
+        :transaction
+        |> insert(input: "0xabcd010203040506")
+        |> with_block()
+
+      insert(:token_instance, token_id: id, token_contract_address_hash: token.contract_address_hash)
+
+      insert_list(100, :token_transfer,
+        token_contract_address: token.contract_address,
+        transaction: transaction,
+        token_ids: [id + 1],
+        token_type: "ERC-404",
+        amounts: [1]
+      )
+
+      transfers_0 =
+        insert_list(26, :token_transfer,
+          token_contract_address: token.contract_address,
+          transaction: transaction,
+          token_ids: [id, id + 1],
+          token_type: "ERC-404",
+          amounts: [1, 2]
+        )
+
+      transfers_1 =
+        for _ <- 26..50 do
+          transaction =
+            :transaction
+            |> insert(input: "0xabcd010203040506")
+            |> with_block()
+
+          insert(:token_transfer,
+            token_contract_address: token.contract_address,
+            transaction: transaction,
+            token_ids: [id],
+            token_type: "ERC-404"
           )
         end
 
@@ -996,14 +1237,15 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
 
       token_transfers =
         for _i <- 0..50 do
-          tx = insert(:transaction, input: "0xabcd010203040506") |> with_block()
+          transaction = insert(:transaction, input: "0xabcd010203040506") |> with_block()
 
           insert(:token_transfer,
-            transaction: tx,
-            block: tx.block,
-            block_number: tx.block_number,
+            transaction: transaction,
+            block: transaction.block,
+            block_number: transaction.block_number,
             token_contract_address: token.contract_address,
-            token_ids: [id]
+            token_ids: [id],
+            token_type: "ERC-721"
           )
         end
 
@@ -1029,15 +1271,16 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
 
       insert(:token_instance, token_id: id, token_contract_address_hash: token.contract_address_hash)
 
-      tx = insert(:transaction, input: "0xabcd010203040506") |> with_block()
+      transaction = insert(:transaction, input: "0xabcd010203040506") |> with_block()
 
       tt =
         insert(:token_transfer,
-          transaction: tx,
-          block: tx.block,
-          block_number: tx.block_number,
+          transaction: transaction,
+          block: transaction.block,
+          block_number: transaction.block_number,
           token_contract_address: token.contract_address,
           token_ids: Enum.map(0..50, fn _x -> id end),
+          token_type: "ERC-1155",
           amounts: Enum.map(0..50, fn x -> x end)
         )
 
@@ -1056,16 +1299,17 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
       amount = 101
       insert(:token_instance, token_id: id, token_contract_address_hash: token.contract_address_hash)
 
-      tx = insert(:transaction, input: "0xabcd010203040506") |> with_block()
+      transaction = insert(:transaction, input: "0xabcd010203040506") |> with_block()
 
       tt =
         for _ <- 0..50 do
           insert(:token_transfer,
-            transaction: tx,
-            block: tx.block,
-            block_number: tx.block_number,
+            transaction: transaction,
+            block: transaction.block,
+            block_number: transaction.block_number,
             token_contract_address: token.contract_address,
             token_ids: Enum.map(0..50, fn x -> x end) ++ [id],
+            token_type: "ERC-1155",
             amounts: Enum.map(1..51, fn x -> x end) ++ [amount]
           )
         end
@@ -1195,12 +1439,240 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
       insert_list(count, :token_transfer,
         token_contract_address: token.contract_address,
         transaction: transaction,
-        token_ids: [0]
+        token_ids: [0],
+        token_type: "ERC-721"
       )
 
       request = get(conn, "/api/v2/tokens/#{token.contract_address.hash}/instances/0/transfers-count")
 
       assert %{"transfers_count" => ^count} = json_response(request, 200)
+    end
+  end
+
+  describe "/tokens/{address_hash}/instances/{token_id}/refetch-metadata" do
+    setup :set_mox_from_context
+
+    setup :verify_on_exit!
+
+    setup %{json_rpc_named_arguments: json_rpc_named_arguments} do
+      old_recaptcha_env = Application.get_env(:block_scout_web, :recaptcha)
+      old_http_adapter = Application.get_env(:block_scout_web, :http_adapter)
+
+      v2_secret_key = "v2_secret_key"
+      v3_secret_key = "v3_secret_key"
+
+      Application.put_env(:block_scout_web, :recaptcha,
+        v2_secret_key: v2_secret_key,
+        v3_secret_key: v3_secret_key,
+        is_disabled: false
+      )
+
+      Application.put_env(:block_scout_web, :http_adapter, Explorer.Mox.HTTPoison)
+
+      mocked_json_rpc_named_arguments = Keyword.put(json_rpc_named_arguments, :transport, EthereumJSONRPC.Mox)
+
+      start_supervised!({Task.Supervisor, name: Indexer.TaskSupervisor})
+
+      start_supervised!(
+        {TokenInstanceMetadataRefetchOnDemand,
+         [mocked_json_rpc_named_arguments, [name: TokenInstanceMetadataRefetchOnDemand]]}
+      )
+
+      %{json_rpc_named_arguments: mocked_json_rpc_named_arguments}
+
+      Subscriber.to(:fetched_token_instance_metadata, :on_demand)
+
+      on_exit(fn ->
+        Application.put_env(:block_scout_web, :recaptcha, old_recaptcha_env)
+        Application.put_env(:block_scout_web, :http_adapter, old_http_adapter)
+      end)
+
+      {:ok, %{v2_secret_key: v2_secret_key, v3_secret_key: v3_secret_key}}
+    end
+
+    test "token instance metadata on-demand re-fetcher is called", %{conn: conn, v2_secret_key: v2_secret_key} do
+      expected_body = "secret=#{v2_secret_key}&response=123"
+
+      Explorer.Mox.HTTPoison
+      |> expect(:post, fn _url, ^expected_body, _headers, _options ->
+        {:ok,
+         %HTTPoison.Response{
+           status_code: 200,
+           body:
+             Jason.encode!(%{
+               "success" => true,
+               "hostname" => Application.get_env(:block_scout_web, BlockScoutWeb.Endpoint)[:url][:host]
+             })
+         }}
+      end)
+
+      token = insert(:token, type: "ERC-721")
+      token_id = 1
+
+      insert(:token_instance,
+        token_id: token_id,
+        token_contract_address_hash: token.contract_address_hash,
+        metadata: %{}
+      )
+
+      metadata = %{"name" => "Super Token"}
+      url = "http://metadata.endpoint.com"
+      token_contract_address_hash_string = to_string(token.contract_address_hash)
+
+      TestHelper.fetch_token_uri_mock(url, token_contract_address_hash_string)
+
+      Application.put_env(:explorer, :http_adapter, Explorer.Mox.HTTPoison)
+
+      Explorer.Mox.HTTPoison
+      |> expect(:get, fn ^url, _headers, _options ->
+        {:ok, %HTTPoison.Response{status_code: 200, body: Jason.encode!(metadata)}}
+      end)
+
+      topic = "token_instances:#{token_contract_address_hash_string}"
+
+      {:ok, _reply, _socket} =
+        BlockScoutWeb.UserSocketV2
+        |> socket("no_id", %{})
+        |> subscribe_and_join(topic)
+
+      request =
+        patch(conn, "/api/v2/tokens/#{token.contract_address.hash}/instances/#{token_id}/refetch-metadata", %{
+          "recaptcha_response" => "123"
+        })
+
+      assert %{"message" => "OK"} = json_response(request, 200)
+
+      :timer.sleep(100)
+
+      assert_receive(
+        {:chain_event, :fetched_token_instance_metadata, :on_demand,
+         [^token_contract_address_hash_string, ^token_id, ^metadata]}
+      )
+
+      assert_receive %Phoenix.Socket.Message{
+                       payload: %{token_id: ^token_id, fetched_metadata: ^metadata},
+                       event: "fetched_token_instance_metadata",
+                       topic: ^topic
+                     },
+                     :timer.seconds(1)
+
+      token_instance_from_db =
+        Repo.get_by(Instance, token_id: token_id, token_contract_address_hash: token.contract_address_hash)
+
+      assert(token_instance_from_db)
+      assert token_instance_from_db.metadata == metadata
+
+      Application.put_env(:explorer, :http_adapter, HTTPoison)
+    end
+
+    test "don't fetch token instance metadata for non-existent token instance", %{
+      conn: conn,
+      v2_secret_key: v2_secret_key
+    } do
+      expected_body = "secret=#{v2_secret_key}&response=123"
+
+      Explorer.Mox.HTTPoison
+      |> expect(:post, fn _url, ^expected_body, _headers, _options ->
+        {:ok,
+         %HTTPoison.Response{
+           status_code: 200,
+           body:
+             Jason.encode!(%{
+               "success" => true,
+               "hostname" => Application.get_env(:block_scout_web, BlockScoutWeb.Endpoint)[:url][:host]
+             })
+         }}
+      end)
+
+      token = insert(:token, type: "ERC-721")
+      token_id = 0
+
+      insert(:token_instance, token_id: token_id, token_contract_address_hash: token.contract_address_hash)
+
+      request =
+        patch(conn, "/api/v2/tokens/#{token.contract_address.hash}/instances/1/refetch-metadata", %{
+          "recaptcha_response" => "123"
+        })
+
+      assert %{"message" => "Not found"} = json_response(request, 404)
+    end
+
+    test "fetch token instance metadata for existing token instance with no metadata", %{
+      conn: conn,
+      v2_secret_key: v2_secret_key
+    } do
+      expected_body = "secret=#{v2_secret_key}&response=123"
+
+      Explorer.Mox.HTTPoison
+      |> expect(:post, fn _url, ^expected_body, _headers, _options ->
+        {:ok,
+         %HTTPoison.Response{
+           status_code: 200,
+           body:
+             Jason.encode!(%{
+               "success" => true,
+               "hostname" => Application.get_env(:block_scout_web, BlockScoutWeb.Endpoint)[:url][:host]
+             })
+         }}
+      end)
+
+      token = insert(:token, type: "ERC-721")
+      token_id = 1
+
+      insert(:token_instance,
+        token_id: token_id,
+        token_contract_address_hash: token.contract_address_hash,
+        metadata: nil
+      )
+
+      metadata = %{"name" => "Super Token"}
+      url = "http://metadata.endpoint.com"
+      token_contract_address_hash_string = to_string(token.contract_address_hash)
+
+      TestHelper.fetch_token_uri_mock(url, token_contract_address_hash_string)
+
+      Application.put_env(:explorer, :http_adapter, Explorer.Mox.HTTPoison)
+
+      Explorer.Mox.HTTPoison
+      |> expect(:get, fn ^url, _headers, _options ->
+        {:ok, %HTTPoison.Response{status_code: 200, body: Jason.encode!(metadata)}}
+      end)
+
+      topic = "token_instances:#{token_contract_address_hash_string}"
+
+      {:ok, _reply, _socket} =
+        BlockScoutWeb.UserSocketV2
+        |> socket("no_id", %{})
+        |> subscribe_and_join(topic)
+
+      request =
+        patch(conn, "/api/v2/tokens/#{token.contract_address.hash}/instances/#{token_id}/refetch-metadata", %{
+          "recaptcha_response" => "123"
+        })
+
+      assert %{"message" => "OK"} = json_response(request, 200)
+
+      :timer.sleep(100)
+
+      assert_receive(
+        {:chain_event, :fetched_token_instance_metadata, :on_demand,
+         [^token_contract_address_hash_string, ^token_id, ^metadata]}
+      )
+
+      assert_receive %Phoenix.Socket.Message{
+                       payload: %{token_id: ^token_id, fetched_metadata: ^metadata},
+                       event: "fetched_token_instance_metadata",
+                       topic: ^topic
+                     },
+                     :timer.seconds(1)
+
+      token_instance_from_db =
+        Repo.get_by(Instance, token_id: token_id, token_contract_address_hash: token.contract_address_hash)
+
+      assert(token_instance_from_db)
+      assert token_instance_from_db.metadata == metadata
+
+      Application.put_env(:explorer, :http_adapter, HTTPoison)
     end
   end
 
@@ -1225,11 +1697,11 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
   def compare_item(%TokenTransfer{} = token_transfer, json) do
     assert Address.checksum(token_transfer.from_address_hash) == json["from"]["hash"]
     assert Address.checksum(token_transfer.to_address_hash) == json["to"]["hash"]
-    assert to_string(token_transfer.transaction_hash) == json["tx_hash"]
+    assert to_string(token_transfer.transaction_hash) == json["transaction_hash"]
     assert json["timestamp"] != nil
     assert json["method"] != nil
     assert to_string(token_transfer.block_hash) == json["block_hash"]
-    assert to_string(token_transfer.log_index) == json["log_index"]
+    assert token_transfer.log_index == json["log_index"]
     assert check_total(Repo.preload(token_transfer, [{:token, :contract_address}]).token, json["total"], token_transfer)
   end
 
@@ -1240,12 +1712,49 @@ defmodule BlockScoutWeb.API.V2.TokenControllerTest do
     compare_item(Repo.preload(ctb, [{:token, :contract_address}]).token, json["token"])
   end
 
+  def compare_item(%Instance{token: %Token{} = token} = instance, json) do
+    token_type = token.type
+    value = to_string(value(token.type, instance))
+    id = to_string(instance.token_id)
+    metadata = instance.metadata
+    token_address_hash = Address.checksum(token.contract_address_hash)
+    app_url = instance.metadata["external_url"]
+    animation_url = instance.metadata["animation_url"]
+    image_url = instance.metadata["image_url"]
+    token_name = token.name
+    owner_address_hash = Address.checksum(instance.owner.hash)
+    is_contract = !is_nil(instance.owner.contract_code)
+    is_unique = value == "1"
+
+    assert %{
+             "token_type" => ^token_type,
+             "value" => ^value,
+             "id" => ^id,
+             "metadata" => ^metadata,
+             "token" => %{"address" => ^token_address_hash, "name" => ^token_name, "type" => ^token_type},
+             "external_app_url" => ^app_url,
+             "animation_url" => ^animation_url,
+             "image_url" => ^image_url,
+             "is_unique" => ^is_unique
+           } = json
+
+    if is_unique do
+      assert owner_address_hash == json["owner"]["hash"]
+      assert is_contract == json["owner"]["is_contract"]
+    else
+      assert json["owner"] == nil
+    end
+  end
+
   def compare_item(%Instance{} = instance, json) do
     assert to_string(instance.token_id) == json["id"]
     assert Jason.decode!(Jason.encode!(instance.metadata)) == json["metadata"]
     assert json["is_unique"]
     compare_item(Repo.preload(instance, [{:token, :contract_address}]).token, json["token"])
   end
+
+  defp value("ERC-721", _), do: 1
+  defp value(_, nft), do: nft.current_token_balance.value
 
   # with the current implementation no transfers should come with list in totals
   def check_total(%Token{type: nft}, json, _token_transfer) when nft in ["ERC-721", "ERC-1155"] and is_list(json) do
