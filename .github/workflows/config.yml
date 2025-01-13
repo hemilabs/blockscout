@@ -3,9 +3,7 @@ name: Blockscout
 on:
   push:
     branches:
-      - master
       - production-hemi # Hemi default branch
-      - staging-l2
     paths-ignore:
       - 'CHANGELOG.md'
       - '**/README.md'
@@ -14,7 +12,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
     branches:
-      - master
+      - production-hemi # Hemi default branch
 
 env:
   MIX_ENV: test
@@ -34,11 +32,11 @@ jobs:
           echo "matrix=$(node -e '
 
             // Add/remove CI matrix chain types here
-            const defaultChainTypes = ["default"];
-            const chainTypes = ["optimism"];
+            const defaultChainTypes = ["optimism"];
+            const chainTypes = [];
             const extraChainTypes = [];
 
-            // Chain type matrix we use in master branch
+            // Chain type matrix we use in default branch
             const allChainTypes = [].concat(defaultChainTypes, chainTypes, extraChainTypes);
 
             const labels = ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels.*.name) || '[]' }};
@@ -49,7 +47,7 @@ jobs:
               extraChainTypes.filter(chainType => ciLabels.includes("ci:" + chainType))
             );
 
-            // Chain type matrix we use in PRs to master branch
+            // Chain type matrix we use in PRs to default branch
             const ciChainTypes = labeledChainTypes.length > 0 ? labeledChainTypes : defaultChainTypes;
 
             const matrix = { "chain-type": ${{ github.event_name == 'pull_request' && 'ciChainTypes' || 'allChainTypes' }} };
