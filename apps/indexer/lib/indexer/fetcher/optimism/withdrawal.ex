@@ -57,12 +57,14 @@ defmodule Indexer.Fetcher.Optimism.Withdrawal do
          false <- is_nil(start_block_l2),
          true <- start_block_l2 > 0,
          {last_l2_block_number, last_l2_transaction_hash} <- get_last_l2_item(),
-         {safe_block, safe_block_is_latest} = Optimism.get_safe_block(json_rpc_named_arguments),
+         {safe_block, safe_block_is_latest} = Helper.get_safe_block(json_rpc_named_arguments),
          {:start_block_l2_valid, true} <-
            {:start_block_l2_valid,
             (start_block_l2 <= last_l2_block_number || last_l2_block_number == 0) && start_block_l2 <= safe_block},
-         {:ok, last_l2_tx} <- Optimism.get_transaction_by_hash(last_l2_transaction_hash, json_rpc_named_arguments),
-         {:l2_tx_not_found, false} <- {:l2_tx_not_found, !is_nil(last_l2_transaction_hash) && is_nil(last_l2_tx)} do
+         {:ok, last_l2_transaction} <-
+           Optimism.get_transaction_by_hash(last_l2_transaction_hash, json_rpc_named_arguments),
+         {:l2_transaction_not_found, false} <-
+           {:l2_transaction_not_found, !is_nil(last_l2_transaction_hash) && is_nil(last_l2_transaction)} do
       Process.send(self(), :continue, [])
 
       {:noreply,
@@ -92,7 +94,7 @@ defmodule Indexer.Fetcher.Optimism.Withdrawal do
 
         {:stop, :normal, state}
 
-      {:l2_tx_not_found, true} ->
+      {:l2_transaction_not_found, true} ->
         Logger.error(
           "Cannot find last L2 transaction from RPC by its hash. Probably, there was a reorg on L2 chain. Please, check op_withdrawals table."
         )
@@ -297,10 +299,19 @@ defmodule Indexer.Fetcher.Optimism.Withdrawal do
   end
 
   defp fill_block_range(start_block, end_block, message_passer, json_rpc_named_arguments) do
-    fill_block_range(start_block, end_block, message_passer, json_rpc_named_arguments, true)
-    fill_msg_nonce_gaps(start_block, message_passer, json_rpc_named_arguments, false)
-    {last_l2_block_number, _} = get_last_l2_item()
-    fill_block_range(max(start_block, last_l2_block_number), end_block, message_passer, json_rpc_named_arguments, false)
+    if start_block <= end_block do
+      fill_block_range(start_block, end_block, message_passer, json_rpc_named_arguments, true)
+      fill_msg_nonce_gaps(start_block, message_passer, json_rpc_named_arguments, false)
+      {last_l2_block_number, _} = get_last_l2_item()
+
+      fill_block_range(
+        max(start_block, last_l2_block_number),
+        end_block,
+        message_passer,
+        json_rpc_named_arguments,
+        false
+      )
+    end
   end
 
   defp fill_msg_nonce_gaps(start_block_l2, message_passer, json_rpc_named_arguments, scan_db \\ true) do

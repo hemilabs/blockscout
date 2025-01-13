@@ -3,10 +3,10 @@ defmodule Explorer.ExchangeRates.Source.CoinGecko do
   Adapter for fetching exchange rates from https://coingecko.com
   """
 
-  alias Explorer.{Chain, Helper}
+  alias Explorer.Chain
   alias Explorer.ExchangeRates.{Source, Token}
 
-  import Source, only: [to_decimal: 1]
+  import Source, only: [to_decimal: 1, maybe_get_date: 1, handle_image_url: 1]
 
   @behaviour Source
 
@@ -106,6 +106,7 @@ defmodule Explorer.ExchangeRates.Source.CoinGecko do
     "#{source_url}/market_chart?#{URI.encode_query(query_params)}"
   end
 
+  @impl Source
   def secondary_source_url do
     id = config(:secondary_coin_id)
 
@@ -148,8 +149,8 @@ defmodule Explorer.ExchangeRates.Source.CoinGecko do
   def source_url(input) do
     case Chain.Hash.Address.cast(input) do
       {:ok, _} ->
-        address_hash_str = input
-        "#{base_url()}/coins/#{platform()}/contract/#{address_hash_str}"
+        address_hash_string = input
+        "#{base_url()}/coins/#{platform()}/contract/#{address_hash_string}"
 
       _ ->
         symbol = input
@@ -170,7 +171,13 @@ defmodule Explorer.ExchangeRates.Source.CoinGecko do
   @impl Source
   def headers do
     if api_key() do
-      [{"X-Cg-Pro-Api-Key", "#{api_key()}"}]
+      case base_pro_url() do
+        "https://api.coingecko.com" <> _ ->
+          [{"X-Cg-Demo-Api-Key", "#{api_key()}"}]
+
+        _ ->
+          [{"X-Cg-Pro-Api-Key", "#{api_key()}"}]
+      end
     else
       []
     end
@@ -238,12 +245,7 @@ defmodule Explorer.ExchangeRates.Source.CoinGecko do
   defp get_last_updated(market_data) do
     last_updated_data = market_data && market_data["last_updated"]
 
-    if last_updated_data do
-      {:ok, last_updated, 0} = DateTime.from_iso8601(last_updated_data)
-      last_updated
-    else
-      nil
-    end
+    maybe_get_date(last_updated_data)
   end
 
   defp get_current_price(market_data) do
@@ -257,15 +259,12 @@ defmodule Explorer.ExchangeRates.Source.CoinGecko do
   defp get_coin_image(image_data) do
     image_url_raw =
       if image_data do
-        image_data["thumb"] || image_data["small"]
+        image_data["small"] || image_data["thumb"]
       else
         nil
       end
 
-    case Helper.validate_url(image_url_raw) do
-      {:ok, url} -> url
-      _ -> nil
-    end
+    handle_image_url(image_url_raw)
   end
 
   defp get_btc_value(id, market_data) do

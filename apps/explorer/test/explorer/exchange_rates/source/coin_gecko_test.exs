@@ -121,7 +121,7 @@ defmodule Explorer.ExchangeRates.Source.CoinGeckoTest do
           symbol: "POA",
           usd_value: Decimal.new("0.01345698"),
           volume_24h_usd: Decimal.new("119946"),
-          image_url: "https://assets.coingecko.com/coins/images/3157/thumb/poa-network.png?1548331565"
+          image_url: "https://assets.coingecko.com/coins/images/3157/small/poa-network.png?1548331565"
         }
       ]
 
@@ -143,7 +143,7 @@ defmodule Explorer.ExchangeRates.Source.CoinGeckoTest do
       Application.put_env(:explorer, CoinGecko, base_url: "http://localhost:#{bypass.port}")
 
       on_exit(fn ->
-        Application.put_env(:explorer, :coin, "POA")
+        Application.put_env(:explorer, :coin, "ETH")
       end)
 
       {:ok, bypass: bypass}

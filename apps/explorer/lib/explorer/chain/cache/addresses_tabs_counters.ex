@@ -5,18 +5,25 @@ defmodule Explorer.Chain.Cache.AddressesTabsCounters do
 
   use GenServer
 
-  import Explorer.Counters.Helper, only: [fetch_from_cache: 3]
+  import Explorer.Counters.Helper, only: [fetch_from_ets_cache: 3]
 
   alias Explorer.Chain.Address.Counters
 
   @cache_name :addresses_tabs_counters
 
-  @typep counter_type :: :validations | :txs | :token_transfers | :token_balances | :logs | :withdrawals | :internal_txs
+  @typep counter_type ::
+           :validations
+           | :transactions
+           | :token_transfers
+           | :token_balances
+           | :logs
+           | :withdrawals
+           | :internal_transactions
   @typep response_status :: :limit_value | :stale | :up_to_date
 
   @spec get_counter(counter_type, String.t()) :: {DateTime.t(), non_neg_integer(), response_status} | nil
   def get_counter(counter_type, address_hash) do
-    address_hash |> cache_key(counter_type) |> fetch_from_cache(@cache_name, nil) |> check_staleness()
+    address_hash |> cache_key(counter_type) |> fetch_from_ets_cache(@cache_name, nil) |> check_staleness()
   end
 
   @spec set_counter(counter_type, String.t(), non_neg_integer()) :: :ok
@@ -38,11 +45,11 @@ defmodule Explorer.Chain.Cache.AddressesTabsCounters do
 
   @spec get_task(atom, String.t()) :: true | nil
   def get_task(counter_type, address_hash) do
-    address_hash |> task_cache_key(counter_type) |> fetch_from_cache(@cache_name, nil)
+    address_hash |> task_cache_key(counter_type) |> fetch_from_ets_cache(@cache_name, nil)
   end
 
-  def save_txs_counter_progress(address_hash, results) do
-    GenServer.cast(__MODULE__, {:set_txs_state, address_hash, results})
+  def save_transactions_counter_progress(address_hash, results) do
+    GenServer.cast(__MODULE__, {:set_transactions_state, address_hash, results})
   end
 
   def start_link(_) do
@@ -63,21 +70,21 @@ defmodule Explorer.Chain.Cache.AddressesTabsCounters do
   end
 
   @impl true
-  def handle_cast({:set_txs_state, address_hash, %{txs_types: txs_types} = results}, state) do
+  def handle_cast({:set_transactions_state, address_hash, %{transactions_types: transactions_types} = results}, state) do
     address_hash = lowercased_string(address_hash)
 
     if ignored?(state[address_hash]) do
       {:noreply, state}
     else
       address_state =
-        txs_types
-        |> Enum.reduce(state[address_hash] || %{}, fn tx_type, acc ->
-          Map.put(acc, tx_type, results[tx_type])
+        transactions_types
+        |> Enum.reduce(state[address_hash] || %{}, fn transaction_type, acc ->
+          Map.put(acc, transaction_type, results[transaction_type])
         end)
-        |> (&Map.put(&1, :txs_types, (txs_types ++ (&1[:txs_types] || [])) |> Enum.uniq())).()
+        |> (&Map.put(&1, :transactions_types, (transactions_types ++ (&1[:transactions_types] || [])) |> Enum.uniq())).()
 
       counter =
-        Counters.txs_types()
+        Counters.transactions_types()
         |> Enum.reduce([], fn type, acc ->
           (address_state[type] || []) ++ acc
         end)
@@ -86,12 +93,12 @@ defmodule Explorer.Chain.Cache.AddressesTabsCounters do
         |> min(Counters.counters_limit())
 
       cond do
-        Enum.count(address_state[:txs_types]) == 3 ->
-          set_counter(:txs, address_hash, counter)
+        Enum.count(address_state[:transactions_types]) == 3 ->
+          set_counter(:transactions, address_hash, counter)
           {:noreply, Map.put(state, address_hash, nil)}
 
         counter == Counters.counters_limit() ->
-          set_counter(:txs, address_hash, counter)
+          set_counter(:transactions, address_hash, counter)
           {:noreply, Map.put(state, address_hash, :limit_value)}
 
         true ->

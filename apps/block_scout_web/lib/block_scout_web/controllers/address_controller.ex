@@ -17,7 +17,8 @@ defmodule BlockScoutWeb.AddressController do
   alias Explorer.{Chain, Market}
   alias Explorer.Chain.Address.Counters
   alias Explorer.Chain.{Address, Wei}
-  alias Indexer.Fetcher.CoinBalanceOnDemand
+  alias Indexer.Fetcher.OnDemand.CoinBalance, as: CoinBalanceOnDemand
+  alias Indexer.Fetcher.OnDemand.ContractCode, as: ContractCodeOnDemand
   alias Phoenix.View
 
   def index(conn, %{"type" => "JSON"} = params) do
@@ -57,7 +58,7 @@ defmodule BlockScoutWeb.AddressController do
     items =
       addresses_page
       |> Enum.with_index(1)
-      |> Enum.map(fn {{address, tx_count}, index} ->
+      |> Enum.map(fn {{address, transaction_count}, index} ->
         View.render_to_string(
           AddressView,
           "_tile.html",
@@ -65,7 +66,7 @@ defmodule BlockScoutWeb.AddressController do
           index: items_count + index,
           exchange_rate: exchange_rate,
           total_supply: total_supply,
-          tx_count: tx_count
+          transaction_count: transaction_count
         )
       end)
 
@@ -96,6 +97,8 @@ defmodule BlockScoutWeb.AddressController do
     with {:ok, address_hash} <- Chain.string_to_address_hash(address_hash_string),
          {:ok, address} <- Chain.hash_to_address(address_hash),
          {:ok, false} <- AccessHelper.restricted_access?(address_hash_string, params) do
+      ContractCodeOnDemand.trigger_fetch(address)
+
       render(
         conn,
         "_show_address_transactions.html",

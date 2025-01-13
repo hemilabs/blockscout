@@ -69,10 +69,16 @@ defmodule Explorer.Chain.PolygonZkevm.Reader do
       else
         paging_options = Keyword.get(options, :paging_options, Chain.default_paging_options())
 
-        base_query
-        |> Chain.join_associations(necessity_by_association)
-        |> page_batches(paging_options)
-        |> limit(^paging_options.page_size)
+        case paging_options do
+          %PagingOptions{key: {0}} ->
+            []
+
+          _ ->
+            base_query
+            |> Chain.join_associations(necessity_by_association)
+            |> page_batches(paging_options)
+            |> limit(^paging_options.page_size)
+        end
       end
 
     select_repo(options).all(query)
@@ -184,12 +190,12 @@ defmodule Explorer.Chain.PolygonZkevm.Reader do
     Reads a list of L1 transactions by their hashes from `polygon_zkevm_lifecycle_l1_transactions` table.
   """
   @spec lifecycle_transactions(list()) :: list()
-  def lifecycle_transactions(l1_tx_hashes) do
+  def lifecycle_transactions(l1_transaction_hashes) do
     query =
       from(
         lt in LifecycleTransaction,
         select: {lt.hash, lt.id},
-        where: lt.hash in ^l1_tx_hashes
+        where: lt.hash in ^l1_transaction_hashes
       )
 
     Repo.all(query, timeout: :infinity)
@@ -239,20 +245,26 @@ defmodule Explorer.Chain.PolygonZkevm.Reader do
   def deposits(options \\ []) do
     paging_options = Keyword.get(options, :paging_options, Chain.default_paging_options())
 
-    base_query =
-      from(
-        b in Bridge,
-        left_join: t1 in assoc(b, :l1_token),
-        left_join: t2 in assoc(b, :l2_token),
-        where: b.type == :deposit and not is_nil(b.l1_transaction_hash),
-        preload: [l1_token: t1, l2_token: t2],
-        order_by: [desc: b.index]
-      )
+    case paging_options do
+      %PagingOptions{key: {0}} ->
+        []
 
-    base_query
-    |> page_deposits_or_withdrawals(paging_options)
-    |> limit(^paging_options.page_size)
-    |> select_repo(options).all()
+      _ ->
+        base_query =
+          from(
+            b in Bridge,
+            left_join: t1 in assoc(b, :l1_token),
+            left_join: t2 in assoc(b, :l2_token),
+            where: b.type == :deposit and not is_nil(b.l1_transaction_hash),
+            preload: [l1_token: t1, l2_token: t2],
+            order_by: [desc: b.index]
+          )
+
+        base_query
+        |> page_deposits_or_withdrawals(paging_options)
+        |> limit(^paging_options.page_size)
+        |> select_repo(options).all()
+    end
   end
 
   @doc """
@@ -277,20 +289,26 @@ defmodule Explorer.Chain.PolygonZkevm.Reader do
   def withdrawals(options \\ []) do
     paging_options = Keyword.get(options, :paging_options, Chain.default_paging_options())
 
-    base_query =
-      from(
-        b in Bridge,
-        left_join: t1 in assoc(b, :l1_token),
-        left_join: t2 in assoc(b, :l2_token),
-        where: b.type == :withdrawal and not is_nil(b.l2_transaction_hash),
-        preload: [l1_token: t1, l2_token: t2],
-        order_by: [desc: b.index]
-      )
+    case paging_options do
+      %PagingOptions{key: {0}} ->
+        []
 
-    base_query
-    |> page_deposits_or_withdrawals(paging_options)
-    |> limit(^paging_options.page_size)
-    |> select_repo(options).all()
+      _ ->
+        base_query =
+          from(
+            b in Bridge,
+            left_join: t1 in assoc(b, :l1_token),
+            left_join: t2 in assoc(b, :l2_token),
+            where: b.type == :withdrawal and not is_nil(b.l2_transaction_hash),
+            preload: [l1_token: t1, l2_token: t2],
+            order_by: [desc: b.index]
+          )
+
+        base_query
+        |> page_deposits_or_withdrawals(paging_options)
+        |> limit(^paging_options.page_size)
+        |> select_repo(options).all()
+    end
   end
 
   @doc """
@@ -305,6 +323,26 @@ defmodule Explorer.Chain.PolygonZkevm.Reader do
       )
 
     select_repo(options).aggregate(query, :count, timeout: :infinity)
+  end
+
+  @doc """
+    Filters token decimals value (cannot be greater than 0xFF).
+  """
+  @spec sanitize_decimals(non_neg_integer()) :: non_neg_integer()
+  def sanitize_decimals(decimals) do
+    if decimals > 0xFF do
+      0
+    else
+      decimals
+    end
+  end
+
+  @doc """
+    Filters token symbol (cannot be longer than 16 characters).
+  """
+  @spec sanitize_symbol(String.t()) :: String.t()
+  def sanitize_symbol(symbol) do
+    String.slice(symbol, 0, 16)
   end
 
   defp page_batches(query, %PagingOptions{key: nil}), do: query
