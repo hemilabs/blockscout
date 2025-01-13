@@ -35,7 +35,7 @@ jobs:
           push: true
           cache-from: type=registry,ref=hemilabs/blockscout:buildcache
           cache-to: type=registry,ref=hemilabs/blockscout:buildcache,mode=max
-          tags: hemilabs/blockscout:master, hemilabs/blockscout:${{ env.RELEASE_VERSION }}.commit.${{ env.SHORT_SHA }}
+          tags: hemilabs/blockscout:production-hemi, hemilabs/blockscout:${{ env.RELEASE_VERSION }}.commit.${{ env.SHORT_SHA }}
           labels: ${{ steps.setup.outputs.docker-labels }}
           platforms: |
             linux/amd64
