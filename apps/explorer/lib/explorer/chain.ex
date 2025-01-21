@@ -1319,7 +1319,10 @@ defmodule Explorer.Chain do
         {:error, :not_found}
 
       transaction ->
-        {:ok, transaction |> Map.put(:btc_finality, OpNode.get_block_btc_finality(transaction.block_hash))}
+        {:ok,
+         transaction
+         # Get the BTC finality for the transaction and add it to the transaction struct
+         |> Map.put(:btc_finality, OpNode.get_block_btc_finality(transaction.block_hash))}
     end
   end
 
@@ -2416,8 +2419,14 @@ defmodule Explorer.Chain do
     |> join_associations(necessity_by_association)
     |> select_repo(options).one()
     |> case do
-      nil -> {:error, :not_found}
-      block -> {:ok, block |> Map.put(:btc_finality, OpNode.get_block_btc_finality(block.hash))}
+      nil ->
+        {:error, :not_found}
+
+      block ->
+        {:ok,
+         block
+         # Get the BTC finality for the block and add it to the block struct
+         |> Map.put(:btc_finality, OpNode.get_block_btc_finality(block.hash))}
     end
   end
 
