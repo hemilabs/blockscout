@@ -38,7 +38,7 @@ services:
         CACHE_ADDRESS_WITH_BALANCES_UPDATE_INTERVAL: ""
         ADMIN_PANEL_ENABLED: ""
         RELEASE_VERSION: 6.9.0
-        CHAIN_TYPE: optimism
+        CHAIN_TYPE: optimism # Force chain type for Hemi builds
     links:
       - db:database
 
