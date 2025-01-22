@@ -1,7 +1,11 @@
 name: Hemi Publish Docker image
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - Blockscout
+    types:
+      - completed
     branches:
       - production-hemi
   workflow_dispatch:
