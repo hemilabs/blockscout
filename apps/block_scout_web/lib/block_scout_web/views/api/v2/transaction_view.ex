@@ -437,10 +437,12 @@ defmodule BlockScoutWeb.API.V2.TransactionView do
     }
 
     result
-    |> add_optional_transaction_field(transaction, :btc_finality)
     |> chain_type_fields(transaction, single_transaction?, conn, watchlist_names)
+    # Try to add the BTC finality field to the transaction response
+    |> add_optional_transaction_field(transaction, :btc_finality)
   end
 
+  # Adds an optional field to the transaction response.
   defp add_optional_transaction_field(result, transaction, field) do
     case Map.get(transaction, field) do
       nil -> result

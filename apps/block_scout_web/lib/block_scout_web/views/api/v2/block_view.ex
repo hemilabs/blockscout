@@ -65,9 +65,11 @@ defmodule BlockScoutWeb.API.V2.BlockView do
       "withdrawals_count" => count_withdrawals(block)
     }
     |> chain_type_fields(block, single_block?)
+    # Try to add the BTC finality field to the block response
     |> add_optional_block_field(block, :btc_finality)
   end
 
+  # Adds an optional field to the block response.
   defp add_optional_block_field(result, block, field) do
     case Map.get(block, field) do
       nil -> result

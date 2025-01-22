@@ -20,6 +20,7 @@ config :explorer,
         eth_call: ConfigHelper.eth_call_url(),
         debug_traceTransaction: System.get_env("ETHEREUM_JSONRPC_TRACE_URL"),
         debug_traceBlockByNumber: System.get_env("ETHEREUM_JSONRPC_TRACE_URL"),
+        # The BTC finality must be obtained from on-node, not from the regular RPC node aka op-geth.
         optimism_btcFinalityByBlockHash: System.get_env("ETHEREUM_JSONRPC_OP_NODE_URL")
       ],
       http_options: [recv_timeout: timeout, timeout: timeout, hackney: hackney_opts]

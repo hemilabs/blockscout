@@ -3,7 +3,24 @@ name: Blockscout
 on:
   push:
     branches:
+      - master
+      - production-arbitrum
+      - production-core
+      - production-eth-sepolia
+      - production-filecoin
+      - production-fuse
+      - production-optimism
       - production-hemi # Hemi default branch
+      - production-immutable
+      - production-iota
+      - production-lukso
+      - production-rsk
+      - production-sokol
+      - production-suave
+      - production-xdai
+      - production-zkevm
+      - production-zksync
+      - staging-l2
     paths-ignore:
       - 'CHANGELOG.md'
       - '**/README.md'
@@ -12,7 +29,8 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
     branches:
-      - production-hemi # Hemi default branch
+      - master
+      - production-hemi # Force all the checks to run for PRs to the Hemi default branch too
 
 env:
   MIX_ENV: test
@@ -32,11 +50,11 @@ jobs:
           echo "matrix=$(node -e '
 
             // Add/remove CI matrix chain types here
-            const defaultChainTypes = ["optimism"];
-            const chainTypes = [];
-            const extraChainTypes = [];
+            const defaultChainTypes = ["optimism"]; // Default chain type for Hemi
+            const chainTypes = []; // Prevent any other chain type to be included in the matrix
+            const extraChainTypes = []; // All of them!
 
-            // Chain type matrix we use in default branch
+            // Chain type matrix we use in master branch
             const allChainTypes = [].concat(defaultChainTypes, chainTypes, extraChainTypes);
 
             const labels = ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels.*.name) || '[]' }};
@@ -47,7 +65,7 @@ jobs:
               extraChainTypes.filter(chainType => ciLabels.includes("ci:" + chainType))
             );
 
-            // Chain type matrix we use in PRs to default branch
+            // Chain type matrix we use in PRs to master branch
             const ciChainTypes = labeledChainTypes.length > 0 ? labeledChainTypes : defaultChainTypes;
 
             const matrix = { "chain-type": ${{ github.event_name == 'pull_request' && 'ciChainTypes' || 'allChainTypes' }} };
