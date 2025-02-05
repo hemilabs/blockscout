@@ -379,7 +379,7 @@ defmodule Indexer.Fetcher.Optimism do
   """
   @spec requires_l1_reorg_monitor?() :: boolean()
   def requires_l1_reorg_monitor? do
-    # The SystemConfig contract is not used in Hemi
-    false
+    # The SystemConfig contract is not used in Hemi but the reorg monitor is still needed.
+    true
   end
 end
