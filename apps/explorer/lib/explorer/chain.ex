@@ -1245,7 +1245,10 @@ defmodule Explorer.Chain do
         {:error, :not_found}
 
       block ->
-        {:ok, block}
+        {:ok,
+         block
+         # Get the BTC finality for the block and add it to the block struct
+         |> Map.put(:btc_finality, OpNode.get_block_btc_finality(block.hash))}
     end
   end
 
