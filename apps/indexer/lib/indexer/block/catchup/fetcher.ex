@@ -92,7 +92,7 @@ defmodule Indexer.Block.Catchup.Fetcher do
   The number of concurrent requests of `blocks_batch_size` to allow against the JSONRPC.
   Defaults to 10.  So, up to `blocks_concurrency * block_batch_size` (defaults to
   `10 * 10`) blocks can be requested from the JSONRPC at once over all
-  connections.  Up to `block_concurrency * receipts_batch_size * receipts_concurrency` (defaults to
+  connections.  Up to `blocks_concurrency * receipts_batch_size * receipts_concurrency` (defaults to
   `#{10 * Block.Fetcher.default_receipts_batch_size() * Block.Fetcher.default_receipts_concurrency()}`
   ) receipts can be requested from the JSONRPC at once over all connections.
   """
