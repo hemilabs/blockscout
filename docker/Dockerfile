@@ -60,6 +60,9 @@ RUN mkdir -p /opt/release \
 ##############################################################
 FROM hexpm/elixir:1.17.3-erlang-27.1-alpine-3.20.3
 
+# Update musl and openssl to patch CVE-2025-26519, CVE-2024-12797, CVE-2024-9143 and CVE-2024-13176
+RUN apk --no-cache --update upgrade musl openssl
+
 ARG RELEASE_VERSION
 ENV RELEASE_VERSION=${RELEASE_VERSION}
 ARG CHAIN_TYPE

@@ -43,3 +43,5 @@ jobs:
             CHAIN_TYPE=optimism
             DISABLE_WEBAPP=false
             RELEASE_VERSION=${{ env.RELEASE_VERSION }}
+          provenance: true
+          sbom: true
