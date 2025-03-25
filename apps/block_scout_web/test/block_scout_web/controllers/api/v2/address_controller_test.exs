@@ -1799,6 +1799,11 @@ defmodule BlockScoutWeb.API.V2.AddressControllerTest do
     end
 
     test "internal transactions can paginate", %{conn: conn} do
+      expect(EthereumJSONRPC.Mox, :json_rpc, 3, fn
+        %{method: "optimism_btcFinalityByBlockHash"}, _ ->
+          {:ok, %{btc_finality: -9}}
+      end)
+
       address = insert(:address)
 
       transaction =

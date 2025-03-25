@@ -1,6 +1,8 @@
 defmodule BlockScoutWeb.AddressInternalTransactionControllerTest do
   use BlockScoutWeb.ConnCase, async: true
 
+  import Mox
+
   import BlockScoutWeb.Routers.WebRouter.Helpers,
     only: [address_internal_transaction_path: 3, address_internal_transaction_path: 4]
 
@@ -329,6 +331,11 @@ defmodule BlockScoutWeb.AddressInternalTransactionControllerTest do
     end
 
     test "next page doesn't miss internal transactions", %{conn: conn} do
+      expect(EthereumJSONRPC.Mox, :json_rpc, 4, fn
+        %{method: "optimism_btcFinalityByBlockHash"}, _ ->
+          {:ok, %{btc_finality: -9}}
+      end)
+
       address = insert(:address)
 
       a_block = insert(:block, number: 1000)
@@ -493,6 +500,11 @@ defmodule BlockScoutWeb.AddressInternalTransactionControllerTest do
     end
 
     test "next_page_params exist if not on last page", %{conn: conn} do
+      expect(EthereumJSONRPC.Mox, :json_rpc, fn
+        %{method: "optimism_btcFinalityByBlockHash"}, _ ->
+          {:ok, %{btc_finality: -9}}
+      end)
+
       address = insert(:address)
       block = %Block{number: number} = insert(:block, number: 7000)
 
