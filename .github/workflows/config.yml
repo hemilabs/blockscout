@@ -21,6 +21,7 @@ on:
       - production-zkevm
       - production-zksync
       - staging-l2
+      - max/metadata
     paths-ignore:
       - 'CHANGELOG.md'
       - '**/README.md'
