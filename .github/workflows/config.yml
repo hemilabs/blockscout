@@ -300,10 +300,14 @@ jobs:
             ${{ runner.os }}-${{ env.ELIXIR_VERSION }}-${{ env.OTP_VERSION }}-${{ env.MIX_ENV }}-deps-mixlockhash-
 
       - name: Scan explorer for vulnerabilities
-        run: mix sobelow --config
+      - run: |
+          mix deps.get
+          mix sobelow --config
         working-directory: "apps/explorer"
       - name: Scan block_scout_web for vulnerabilities
-        run: mix sobelow --config
+      - run: |
+          mix deps.get
+          mix sobelow --config
         working-directory: "apps/block_scout_web"
 
   cspell:
