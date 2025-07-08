@@ -128,7 +128,9 @@ defmodule Explorer.Mixfile do
       {:ueberauth_auth0, "~> 2.0"},
       {:oauth2, "~> 2.0"},
       {:siwe, github: "royal-markets/siwe-ex", ref: "51c9c08240eb7eea3c35693011f8d260cd9bb3be"},
-      {:joken, "~> 2.6"}
+      {:joken, "~> 2.6"},
+      {:dns, "~> 2.4.0"},
+      {:inet_cidr, "~> 1.0.0"}
     ]
   end
 
