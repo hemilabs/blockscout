@@ -661,9 +661,20 @@ defmodule Explorer.Token.MetadataRetriever do
   end
 
   def fetch_metadata_from_uri(uri, ipfs?, hex_token_id \\ nil) do
-    case Mix.env() != :test && URI.parse(uri) do
-      %URI{host: host} when host in @ignored_hosts ->
-        {:error, "ignored host #{host}"}
+    case !ipfs? && MetadataURIValidator.validate_uri(uri) do
+      {:error, reason} ->
+        if reason == :blacklist do
+          Logger.warning(
+            [
+              "Request to token uri failed: #{inspect(uri)}.",
+              "Host is blacklisted.",
+              "To disable IPs blacklisting set INDEXER_TOKEN_INSTANCE_HOST_FILTERING_ENABLED=false"
+            ],
+            fetcher: :token_instances
+          )
+        end
+
+        {:error, "ignored host"}
 
       _ ->
         fetch_metadata_from_uri_request(uri, hex_token_id, ipfs?)
