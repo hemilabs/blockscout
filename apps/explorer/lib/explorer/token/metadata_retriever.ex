@@ -5,7 +5,7 @@ defmodule Explorer.Token.MetadataRetriever do
 
   require Logger
 
-  alias Explorer.{Chain, Repo}
+  alias Explorer.{Chain, MetadataURIValidator, Repo}
   alias Explorer.Chain.{Hash, Token}
   alias Explorer.Helper, as: ExplorerHelper
   alias Explorer.SmartContract.Reader
