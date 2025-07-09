@@ -236,6 +236,7 @@ jobs:
         if: steps.dialyzer-cache.output.cache-hit != 'true'
         run: |
           mkdir -p priv/plts
+          mix deps.get
           mix dialyzer --plt
         env:
           CHAIN_TYPE: ${{ matrix.chain-type != 'default' && matrix.chain-type || '' }}
