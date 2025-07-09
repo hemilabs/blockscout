@@ -164,7 +164,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ env.ELIXIR_VERSION }}-${{ env.OTP_VERSION }}-${{ env.MIX_ENV }}-deps-mixlockhash-
 
-      - run: mix credo
+      - run: mix deps.get && mix credo
 
   check_formatted:
     name: Code formatting checks
