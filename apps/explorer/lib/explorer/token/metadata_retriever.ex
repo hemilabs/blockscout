@@ -21,8 +21,6 @@ defmodule Explorer.Token.MetadataRetriever do
 
   @max_error_length 255
 
-  @ignored_hosts ["localhost", "127.0.0.1", "0.0.0.0", "", nil]
-
   @contract_abi [
     %{
       "constant" => true,
