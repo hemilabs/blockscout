@@ -708,7 +708,7 @@ defmodule Explorer.Token.MetadataRetriever do
 
     case Application.get_env(:explorer, :http_adapter).get(uri, headers,
            recv_timeout: 30_000,
-           follow_redirect: true,
+           follow_redirect: false,
            hackney: [pool: :token_instance_fetcher]
          ) do
       {:ok, %Response{body: body, status_code: 200, headers: response_headers}} ->
