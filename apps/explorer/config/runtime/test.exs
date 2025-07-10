@@ -58,6 +58,8 @@ config :explorer, Explorer.Migrator.RefetchContractCodes, enabled: false
 config :explorer,
   realtime_events_sender: Explorer.Chain.Events.SimpleSender
 
+config :indexer, Indexer.Fetcher.TokenInstance.Helper, host_filtering_enabled?: false
+
 variant = Variant.get()
 
 Code.require_file("#{variant}.exs", "#{__DIR__}/../../../explorer/config/test")

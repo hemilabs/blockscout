@@ -5,7 +5,7 @@ defmodule Explorer.Token.MetadataRetriever do
 
   require Logger
 
-  alias Explorer.{Chain, Repo}
+  alias Explorer.{Chain, MetadataURIValidator, Repo}
   alias Explorer.Chain.{Hash, Token}
   alias Explorer.Helper, as: ExplorerHelper
   alias Explorer.SmartContract.Reader
@@ -20,9 +20,6 @@ defmodule Explorer.Token.MetadataRetriever do
   @erc1155_token_id_placeholder "{id}"
 
   @max_error_length 255
-
-  @ignored_hosts ["localhost", "127.0.0.1", "0.0.0.0", "", nil]
-
   @contract_abi [
     %{
       "constant" => true,
@@ -660,10 +657,46 @@ defmodule Explorer.Token.MetadataRetriever do
       {:error, "preparation error"}
   end
 
+  @doc """
+  Fetches metadata from a given URI.
+
+  ## Parameters
+
+    - `uri` (String): The URI from which to fetch metadata.
+    - `ipfs?` (Boolean): If metadata should be fetched from IPFS.
+    - `hex_token_id` (String, optional): A hexadecimal token ID, defaults to `nil`.
+
+  ## Returns
+
+    - `{:ok, metadata}` on success.
+    - `{:error, reason}` on failure.
+
+  ## Examples
+
+      iex> fetch_metadata_from_uri("http://example.com/metadata", false)
+      {:ok, %{"name" => "Example Token", "description" => "An example token"}}
+
+      iex> fetch_metadata_from_uri("http://localhost/metadata", false)
+      {:error, :blacklist}
+
+  """
+  @spec fetch_metadata_from_uri(String.t(), boolean(), String.t() | nil) :: {:ok, %{metadata: any}} | {:error, binary()}
   def fetch_metadata_from_uri(uri, ipfs?, hex_token_id \\ nil) do
-    case Mix.env() != :test && URI.parse(uri) do
-      %URI{host: host} when host in @ignored_hosts ->
-        {:error, "ignored host #{host}"}
+    case Application.get_env(:indexer, Indexer.Fetcher.TokenInstance.Helper)[:host_filtering_enabled?] &&
+           MetadataURIValidator.validate_uri(uri) do
+      {:error, reason} ->
+        if reason == :blacklist do
+          Logger.warning(
+            [
+              "Request to token uri failed: #{inspect(uri)}.",
+              "Host is blacklisted.",
+              "To disable IPs blacklisting set INDEXER_TOKEN_INSTANCE_HOST_FILTERING_ENABLED=false"
+            ],
+            fetcher: :token_instances
+          )
+        end
+
+        {:error, reason |> to_string() |> truncate_error()}
 
       _ ->
         fetch_metadata_from_uri_request(uri, hex_token_id, ipfs?)
