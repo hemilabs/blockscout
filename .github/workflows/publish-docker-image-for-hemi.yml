@@ -39,7 +39,7 @@ jobs:
             ADMIN_PANEL_ENABLED=false
             API_V1_READ_METHODS_DISABLED=false
             API_V1_WRITE_METHODS_DISABLED=false
-            BLOCKSCOUT_VERSION=v${{ env.RELEASE_VERSION }}-beta.+commit.${{ env.SHORT_SHA }}
+            BLOCKSCOUT_VERSION=v${{ env.RELEASE_VERSION }}-hemi+commit.${{ env.SHORT_SHA }}
             CHAIN_TYPE=optimism
             DISABLE_WEBAPP=false
             RELEASE_VERSION=${{ env.RELEASE_VERSION }}
