@@ -7,6 +7,9 @@ on:
         description: 'Sequence version of this Hemi release'
         required: true
 
+permissions:
+  contents: read
+
 jobs:
   push_to_registry:
     name: Push Docker image to Docker Hub
