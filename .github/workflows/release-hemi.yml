@@ -1,0 +1,44 @@
+name: Release for Hemi
+
+on:
+  workflow_dispatch:
+    inputs:
+      HEMI_VERSION:
+        description: 'Sequence version of this Hemi release'
+        required: true
+
+jobs:
+  push_to_registry:
+    name: Push Docker image to Docker Hub
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: 6.9.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup repo
+        uses: ./.github/actions/setup-repo
+        id: setup
+        with:
+          docker-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          docker-password: ${{ secrets.DOCKERHUB_TOKEN }}
+          docker-remote-multi-platform: ''
+      - name: Build and push Docker image (indexer + API)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: hemilabs/blockscout:latest, hemilabs/blockscout:${{ env.RELEASE_VERSION }}-hemi.${{ inputs.HEMI_VERSION }}
+          labels: ${{ steps.setup.outputs.docker-labels }}
+          platforms: |
+            linux/amd64
+          build-args: |
+            ADMIN_PANEL_ENABLED=false
+            API_V1_READ_METHODS_DISABLED=false
+            API_V1_WRITE_METHODS_DISABLED=false
+            BLOCKSCOUT_VERSION=v${{ env.RELEASE_VERSION }}-hemi.${{ inputs.HEMI_VERSION }}
+            CHAIN_TYPE=optimism
+            DISABLE_WEBAPP=false
+            RELEASE_VERSION=${{ env.RELEASE_VERSION }}
+          provenance: true
+          sbom: true
