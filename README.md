@@ -47,6 +47,12 @@ f8a2d95be7d8   redis:alpine                                        "docker-entry
 
 3. ~~The explorer does not detect the chain is a rollup and so does not display L1->L2 deposits or L2->L1 withdrawals in their own list. Rollups likely need additional configuration (and possibly a connection to a regular geth node?).~~
 
+## Build and Deployment Process
+
+When commits are pushed to or PRs are merged into `production-hemi`, Docker images are built with tags following this format: `hemilabs/blockscout:[RELEASE_VERSION]-postrelease-[SHORT_SHA]`.
+
+When a tag is pushed, the "Release for Hemi" workflow is triggered and Docker images are build with these tags: `hemilabs/blockscout:latest` and `hemilabs/blockscout:[RELEASE_VERSION]-hemi.[TAG]`. Tags must be a sequence of positive integers to allow the deployment automation to properly detect the change.
+
 <h1 align="center">Blockscout</h1>
 <p align="center">Blockchain Explorer for inspecting and analyzing EVM Chains.</p>
 <div align="center">

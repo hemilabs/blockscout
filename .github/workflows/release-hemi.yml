@@ -1,17 +1,16 @@
 name: Release for Hemi
 
 on:
-  workflow_dispatch:
-    inputs:
-      HEMI_VERSION:
-        description: 'Sequence version of this Hemi release'
-        required: true
+  push:
+    tags:
+      - '*'
 
 permissions:
   contents: read
 
 jobs:
   push_to_registry:
+    if: startsWith(github.ref, 'refs/tags/')
     name: Push Docker image to Docker Hub
     runs-on: ubuntu-latest
     env:
@@ -31,7 +30,7 @@ jobs:
           context: .
           file: ./docker/Dockerfile
           push: true
-          tags: hemilabs/blockscout:latest, hemilabs/blockscout:${{ env.RELEASE_VERSION }}-hemi.${{ inputs.HEMI_VERSION }}
+          tags: hemilabs/blockscout:latest, hemilabs/blockscout:${{ env.RELEASE_VERSION }}-hemi.${{ github.ref_name }}
           labels: ${{ steps.setup.outputs.docker-labels }}
           platforms: |
             linux/amd64
@@ -39,7 +38,7 @@ jobs:
             ADMIN_PANEL_ENABLED=false
             API_V1_READ_METHODS_DISABLED=false
             API_V1_WRITE_METHODS_DISABLED=false
-            BLOCKSCOUT_VERSION=v${{ env.RELEASE_VERSION }}-hemi.${{ inputs.HEMI_VERSION }}
+            BLOCKSCOUT_VERSION=v${{ env.RELEASE_VERSION }}-hemi.${{ github.ref_name }}
             CHAIN_TYPE=optimism
             DISABLE_WEBAPP=false
             RELEASE_VERSION=${{ env.RELEASE_VERSION }}
