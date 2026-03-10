@@ -18,7 +18,7 @@ jobs:
     name: Push Docker image to Docker Hub
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Setup repo
         uses: ./.github/actions/setup-repo
         id: setup
@@ -30,7 +30,7 @@ jobs:
           docker-arm-host-key: ${{ secrets.ARM_RUNNER_KEY }}
 
       - name: Build and push Docker image (indexer + API)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: .
           file: ./docker/Dockerfile
@@ -59,7 +59,7 @@ jobs:
             RELEASE_VERSION=${{ env.RELEASE_VERSION }}
 
       - name: Build and push Docker image (indexer)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: .
           file: ./docker/Dockerfile
@@ -85,7 +85,7 @@ jobs:
             RELEASE_VERSION=${{ env.RELEASE_VERSION }}
 
       - name: Build and push Docker image (API)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: .
           file: ./docker/Dockerfile
@@ -111,7 +111,7 @@ jobs:
             RELEASE_VERSION=${{ env.RELEASE_VERSION }}
 
       - name: Build and push Docker image for frontend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: .
           file: ./docker/Dockerfile
@@ -140,7 +140,7 @@ jobs:
     steps:
       - name: Get Vault credentials
         id: retrieve-vault-secrets
-        uses: hashicorp/vault-action@v2.4.1
+        uses: hashicorp/vault-action@abba4a3980d0264909f6a0892d7f593b74ce0884 # v2.4.1
         with:
           url: https://vault.k8s.blockscout.com
           role: ci-dev
@@ -151,7 +151,7 @@ jobs:
           secrets: |
             ci/data/dev/github token | WORKFLOW_TRIGGER_TOKEN ;
       - name: Trigger deploy
-        uses: convictional/trigger-workflow-and-wait@v1.6.1
+        uses: convictional/trigger-workflow-and-wait@924e4984551efec603bec665c0663332498c381a # v1.6.1
         with:
           owner: blockscout
           repo: deployment-values
