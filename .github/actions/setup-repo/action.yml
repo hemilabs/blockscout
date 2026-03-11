@@ -8,7 +8,7 @@ inputs:
     description: 'Docker password'
     required: true
   docker-remote-multi-platform:
-    description: 'Docker remote multi-platform builder'
+    description: 'Docker remote multi-platform builder. Deprecated - currently has no effect.'
     required: true
     default: 'false'
   docker-arm-host:
@@ -37,39 +37,11 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Set up SSH key
-      shell: bash
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ inputs.docker-arm-host-key }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa  
-    - name: Find builder
-      if: ${{ inputs.docker-remote-multi-platform }}
-      shell: bash
-      run: echo "BUILDER_IP=$(./.github/scripts/select-builder.sh ${{ inputs.docker-arm-host }} root ~/.ssh/id_rsa)" >> $GITHUB_ENV
-    - name: Set up SSH
-      if: ${{ inputs.docker-remote-multi-platform }}
-      uses: MrSquaare/ssh-setup-action@523473d91581ccbf89565e12b40faba93f2708bd # v1.1.0
-      with:
-        host: ${{ env.BUILDER_IP }}
-        private-key: ${{ inputs.docker-arm-host-key }}
-
     - name: Set up Docker Buildx
-      if: ${{ !inputs.docker-remote-multi-platform }}
       uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       id: builder_local
       with:
         platforms: linux/amd64
-
-    - name: Set up Multi-platform Docker Buildx
-      if: ${{ inputs.docker-remote-multi-platform }}
-      uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-      id: builder_multi
-      with:
-        platforms: linux/amd64
-        append: |
-          - endpoint: ssh://root@${{ env.BUILDER_IP }}
-            platforms: linux/arm64/v8
 
     - name: Log in to Docker Hub
       uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
