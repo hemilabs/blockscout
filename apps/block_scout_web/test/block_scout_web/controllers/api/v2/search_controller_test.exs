@@ -1,6 +1,6 @@
 defmodule BlockScoutWeb.API.V2.SearchControllerTest do
   use BlockScoutWeb.ConnCase
-  use Utils.CompileTimeEnvHelper, chain_type: [:explorer, :chain_type]
+  @chain_type Application.compile_env(:explorer, :chain_type)
 
   alias Explorer.Chain.{Address, Block}
   alias Explorer.Tags.AddressTag
