@@ -3,8 +3,6 @@ defmodule BlockScoutWeb.AddressTransactionController do
     Display all the Transactions that terminate at this Address.
   """
 
-  require Logger
-
   use BlockScoutWeb, :controller
 
   import BlockScoutWeb.Account.AuthController, only: [current_user: 1]
@@ -179,8 +177,6 @@ defmodule BlockScoutWeb.AddressTransactionController do
          csv_export_module
        )
        when is_binary(address_hash_string) do
-    Logger.info("About to check reCAPTCHA for CSV export")
-
     with {:ok, address_hash} <- Chain.string_to_address_hash(address_hash_string),
          {:address_exists, true} <- {:address_exists, Address.address_exists?(address_hash)},
          {:recaptcha, true} <- {:recaptcha, CaptchaHelper.recaptcha_passed?(params)} do
@@ -203,11 +199,9 @@ defmodule BlockScoutWeb.AddressTransactionController do
         unprocessable_entity(conn)
 
       {:address_exists, false} ->
-        Logger.info("reCAPTCHA not checked as address was not found")
         not_found(conn)
 
       {:recaptcha, false} ->
-        Logger.info("reCAPTCHA check did not pass")
         not_found(conn)
     end
   end
@@ -219,7 +213,6 @@ defmodule BlockScoutWeb.AddressTransactionController do
   end
 
   def transactions_csv(conn, params) do
-    Logger.info("Preparing CSV export with reCAPTCHA: #{inspect(params)}")
     items_csv(conn, params, AddressTransactionCsvExporter)
   end
 
