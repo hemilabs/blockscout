@@ -48,7 +48,6 @@ defmodule BlockScoutWeb.CaptchaHelper do
         body |> Jason.decode!() |> success?()
 
       false ->
-        Logger.info("reCAPTCHA is disabled")
         true
 
       error ->
@@ -67,12 +66,8 @@ defmodule BlockScoutWeb.CaptchaHelper do
       Logger.warning("reCAPTCHA v3 low score: #{inspect(score)} < #{inspect(score_threshold())}")
     end
 
-    result =
-      (!check_hostname?() || Helper.get_app_host() == hostname) &&
-        check_recaptcha_v3_score(score)
-
-    Logger.info("reCAPTCHA v3 verification result: #{inspect(result)}")
-    result
+    (!check_hostname?() || Helper.get_app_host() == hostname) &&
+      check_recaptcha_v3_score(score)
   end
 
   # v2 case
@@ -81,9 +76,7 @@ defmodule BlockScoutWeb.CaptchaHelper do
       Logger.warning("reCAPTCHA v2 Hostname mismatch: #{inspect(hostname)} != #{inspect(Helper.get_app_host())}")
     end
 
-    result = !check_hostname?() || Helper.get_app_host() == hostname
-    Logger.info("reCAPTCHA v2 verification result: #{inspect(result)}")
-    result
+    !check_hostname?() || Helper.get_app_host() == hostname
   end
 
   defp success?(resp) do
@@ -92,8 +85,6 @@ defmodule BlockScoutWeb.CaptchaHelper do
   end
 
   defp check_recaptcha_v3_score(score) do
-    Logger.info("reCAPTCHA v3 score: #{inspect(score)}")
-
     if score >= score_threshold() do
       true
     else
