@@ -22,10 +22,10 @@ on:
       - production-zksync
       - staging-l2
     paths-ignore:
-      - 'CHANGELOG.md'
-      - '**/README.md'
-      - 'docker/*'
-      - 'docker-compose/*'
+      - "CHANGELOG.md"
+      - "**/README.md"
+      - "docker/*"
+      - "docker-compose/*"
   pull_request:
     types: [opened, synchronize, reopened, labeled]
     branches:
@@ -349,7 +349,7 @@ jobs:
             ${{ runner.os }}-${{ env.ELIXIR_VERSION }}-${{ env.OTP_VERSION }}-${{ env.MIX_ENV }}-blockscoutweb-npm-
 
       - name: Run cspell
-        uses: streetsidesoftware/cspell-action@c8855adc59d29c3fc73b5453b16717947c3f050c # v2.26.3
+        uses: streetsidesoftware/cspell-action@e464ae97d348eb3beb0c5a6296dc4388ad4484d9 # v6.11.1
         with:
           files: |
             **/*.ex*
