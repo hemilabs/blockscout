@@ -351,10 +351,8 @@ jobs:
       - name: Run cspell
         uses: streetsidesoftware/cspell-action@e464ae97d348eb3beb0c5a6296dc4388ad4484d9 # v6.11.1
         with:
-          files: |
-            **/*.ex*
-            **/*.eex
-            **/*.js"
+          use_cspell_files: true
+          incremental_files_only: false
 
   eslint:
     name: ESLint
