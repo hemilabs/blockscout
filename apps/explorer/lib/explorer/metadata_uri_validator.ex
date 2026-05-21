@@ -4,6 +4,7 @@ defmodule Explorer.MetadataURIValidator do
   """
 
   require Logger
+  import Bitwise
 
   @reserved_ranges [
     # Current (local, "this") network
@@ -37,7 +38,22 @@ defmodule Explorer.MetadataURIValidator do
     # Reserved for future use (former Class E network)
     "240.0.0.0/4",
     # Reserved for the "limited [broadcast](https://en.wikipedia.org/wiki/Broadcast_address)" destination address
-    "255.255.255.255/32"
+    "255.255.255.255/32",
+    # IPv4-compatible IPv6 addresses (deprecated, RFC 4291); also covers the unspecified address
+    # (::/128) and loopback (::1/128) since both fall within this range
+    "::/96",
+    # IPv6-mapped IPv4 addresses (e.g. ::ffff:127.0.0.1) — blocks the entire mapped space
+    "::ffff:0.0.0.0/96",
+    # IPv4-translated addresses (RFC 6052)
+    "64:ff9b::/96",
+    # Unique local addresses (ULA, RFC 4193) — IPv6 equivalent of RFC 1918
+    "fc00::/7",
+    # Link-local addresses (IPv6)
+    "fe80::/10",
+    # Documentation (RFC 3849)
+    "2001:db8::/32",
+    # Discard prefix (RFC 6666)
+    "100::/64"
   ]
 
   @doc """
@@ -93,11 +109,37 @@ defmodule Explorer.MetadataURIValidator do
 
   @spec allowed_ip?(tuple()) :: boolean()
   defp allowed_ip?(ip) do
-    not Enum.any?(prepare_cidr_blacklist(), fn range ->
-      range
-      |> InetCidr.contains?(ip)
-    end)
+    blacklist = prepare_cidr_blacklist()
+
+    # Defense-in-depth: if the address is an IPv6-mapped IPv4 (::ffff:x.x.x.x)
+    # or an IPv4-compatible IPv6 address (::a.b.c.d), extract the embedded IPv4
+    # and also check it against IPv4 CIDR ranges.
+    blocked =
+      Enum.any?(blacklist, fn range -> InetCidr.contains?(range, ip) end) ||
+        mapped_ipv4_blocked?(ip, blacklist)
+
+    not blocked
   end
+
+  defp mapped_ipv4_blocked?(ip, blacklist) do
+    case extract_ipv4_from_mapped(ip) do
+      nil -> false
+      ipv4 -> Enum.any?(blacklist, fn range -> InetCidr.contains?(range, ipv4) end)
+    end
+  end
+
+  # Extracts the embedded IPv4 address from an IPv6-mapped IPv4 address.
+  # ::ffff:a.b.c.d is represented as {0, 0, 0, 0, 0, 0xFFFF, (a <<< 8) ||| b, (c <<< 8) ||| d}
+  defp extract_ipv4_from_mapped({0, 0, 0, 0, 0, 0xFFFF, ab, cd}) do
+    {ab >>> 8, ab &&& 0xFF, cd >>> 8, cd &&& 0xFF}
+  end
+
+  # IPv4-compatible IPv6 addresses (deprecated): ::a.b.c.d → {0,0,0,0,0,0, ab, cd}
+  defp extract_ipv4_from_mapped({0, 0, 0, 0, 0, 0, ab, cd}) when ab > 0 or cd > 0 do
+    {ab >>> 8, ab &&& 0xFF, cd >>> 8, cd &&& 0xFF}
+  end
+
+  defp extract_ipv4_from_mapped(_), do: nil
 
   defp prepare_cidr_blacklist do
     from_cache = :persistent_term.get(:parsed_cidr_list, nil)
