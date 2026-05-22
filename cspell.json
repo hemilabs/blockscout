@@ -1,13 +1,32 @@
 // cSpell Settings
 {
+    "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
     // Version of the setting file.  Always 0.2
     "version": "0.2",
     // language - current active spelling language
     "language": "en",
-    // words - list of words to be always considered correct
+    // enabled - enable code editor suggestions
+    "enabled": true,
+    // files - glob patterns of files to be checked
+    "files": [
+        "**/*.ex*",
+        "**/*.eex",
+        "**/*.js"
+    ],
+    // useGitignore - use .gitignore to exclude files from checking
+    "useGitignore": true,
     "ignorePaths": [
         "apps/block_scout_web/assets/js/lib/ace/src-min/*.js"
     ],
+    "ignoreRegExpList": [
+        // Ignore filecoin f410f-like native addresses
+        "f410f[a-z2-7]{39}",
+        // Ignore long base64/base58-style account identifiers (TON addresses, hashes, etc.)
+        "[A-Za-z0-9+\\-:]{40,}",
+        // Ignore escaped hex byte sequences inside strings
+        "\\\\x[0-9a-f]{2,}"
+    ],
+    // words - list of words to be always considered correct
     "words": [
         "aave",
         "absname",
@@ -20,6 +39,7 @@
         "Aiubo",
         "alfajores",
         "alloc",
+        "Alookup",
         "amzootyukbugmx",
         "anytrust",
         "apikey",
@@ -29,6 +49,7 @@
         "ARGMAX",
         "arounds",
         "asda",
+        "Asearch",
         "Asfpp",
         "atoken",
         "autodetectfalse",
@@ -511,6 +532,7 @@
         "stringly",
         "stylelint",
         "stylesheet",
+        "stylys",
         "subcall",
         "subcalls",
         "subdenomination",
@@ -621,6 +643,9 @@
         "whereis",
         "whiler",
         "wysdvjkizxonu",
+        "x-ratelimit-limit",
+        "x-ratelimit-remaining",
+        "x-ratelimit-reset",
         "xakgj",
         "xbaddress",
         "xdai",
@@ -650,5 +675,5 @@
         "dotenv",
         "html-eex",
         "makefile"
-    ]
+    ],
 }
